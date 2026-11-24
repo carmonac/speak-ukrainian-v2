@@ -1,0 +1,14 @@
+packages:
+  - 'apps/*'
+  - 'packages/*'
+  - 'scripts'
+
+# Native/postinstall builds we explicitly trust.
+allowBuilds:
+  '@parcel/watcher': true
+  '@scarf/scarf': false
+  '@swc/core': false
+  '@nestjs/core': false
+  esbuild: true
+  lmdb: true
+  msgpackr-extract: true

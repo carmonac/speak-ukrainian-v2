@@ -1,0 +1,299 @@
+<div class="page-header">
+  <h1>{{ heading() }}</h1>
+  <div class="page-actions">
+    @if (course(); as existing) {
+      <button
+        nz-button
+        nzDanger
+        nz-popconfirm
+        nzPopconfirmTitle="Delete this course and its exercises?"
+        nzOkText="Delete"
+        (nzOnConfirm)="removeCourse()"
+      >
+        <nz-icon nzType="delete" />
+        Delete
+      </button>
+    }
+    <button nz-button nzType="primary" (click)="save()" [nzLoading]="saving()" [disabled]="loading()">
+      <nz-icon nzType="save" />
+      Save
+    </button>
+  </div>
+</div>
+
+@if (error(); as message) {
+  <nz-alert nzType="error" [nzMessage]="message" nzShowIcon nzCloseable (nzOnClose)="error.set(null)" class="alert" />
+}
+
+<nz-spin [nzSpinning]="loading()">
+  <form nz-form nzLayout="vertical" (ngSubmit)="save()">
+    <nz-card nzTitle="Course" class="block">
+      <div class="columns">
+        <nz-form-item>
+          <nz-form-label nzFor="title" nzRequired>Title</nz-form-label>
+          <nz-form-control>
+            <input
+              nz-input
+              id="title"
+              name="title"
+              [ngModel]="form().title"
+              (ngModelChange)="onTitleChange($event)"
+              placeholder="Ukrainian for Spanish speakers"
+            />
+          </nz-form-control>
+        </nz-form-item>
+        <nz-form-item>
+          <nz-form-label nzFor="slug" nzRequired>URL name</nz-form-label>
+          <nz-form-control nzExtra="Used in the course address in the student classroom.">
+            <input nz-input id="slug" name="slug" [ngModel]="form().slug" (ngModelChange)="onSlugChange($event)" />
+          </nz-form-control>
+        </nz-form-item>
+      </div>
+
+      <nz-form-item>
+        <nz-form-label nzFor="summary">Summary</nz-form-label>
+        <nz-form-control nzExtra="One or two sentences shown in the course list.">
+          <textarea
+            nz-input
+            id="summary"
+            name="summary"
+            rows="2"
+            maxlength="500"
+            [(ngModel)]="form().summary"
+          ></textarea>
+        </nz-form-control>
+      </nz-form-item>
+
+      <nz-form-item>
+        <nz-form-label nzFor="description">Description</nz-form-label>
+        <nz-form-control nzExtra="Shown on the course page before buying.">
+          <textarea
+            nz-input
+            id="description"
+            name="description"
+            cdkTextareaAutosize
+            [cdkAutosizeMinRows]="4"
+            [cdkAutosizeMaxRows]="16"
+            [(ngModel)]="form().description"
+          ></textarea>
+        </nz-form-control>
+      </nz-form-item>
+
+      <div class="columns three">
+        <nz-form-item>
+          <nz-form-label nzFor="price" nzRequired>Price</nz-form-label>
+          <nz-form-control nzExtra="0 makes the course free.">
+            <nz-input-number
+              class="full-width"
+              nzId="price"
+              name="price"
+              [nzMin]="0"
+              [nzStep]="1"
+              [nzPrecision]="2"
+              [(ngModel)]="form().price"
+            />
+          </nz-form-control>
+        </nz-form-item>
+        <nz-form-item>
+          <nz-form-label nzFor="currency">Currency</nz-form-label>
+          <nz-form-control>
+            <nz-select nzId="currency" name="currency" [(ngModel)]="form().currency">
+              <nz-option nzValue="eur" nzLabel="EUR — Euro" />
+              <nz-option nzValue="usd" nzLabel="USD — US dollar" />
+              <nz-option nzValue="gbp" nzLabel="GBP — Pound sterling" />
+              <nz-option nzValue="uah" nzLabel="UAH — Hryvnia" />
+            </nz-select>
+          </nz-form-control>
+        </nz-form-item>
+        <nz-form-item>
+          <nz-form-label nzFor="status">Status</nz-form-label>
+          <nz-form-control nzExtra="Only published courses are visible to students.">
+            <nz-select nzId="status" name="status" [(ngModel)]="form().status">
+              <nz-option nzValue="draft" nzLabel="Draft" />
+              <nz-option nzValue="published" nzLabel="Published" />
+            </nz-select>
+          </nz-form-control>
+        </nz-form-item>
+      </div>
+    </nz-card>
+
+    @for (section of form().sections; track $index; let sectionIndex = $index) {
+      <nz-card class="block" [nzTitle]="sectionTitle" [nzExtra]="sectionActions">
+        <ng-template #sectionTitle>
+          <input
+            nz-input
+            class="section-title"
+            [name]="'section-' + sectionIndex"
+            [(ngModel)]="section.title"
+            placeholder="Section title"
+            aria-label="Section title"
+          />
+        </ng-template>
+        <ng-template #sectionActions>
+          <button
+            nz-button
+            nzType="text"
+            type="button"
+            (click)="move(form().sections, sectionIndex, -1)"
+            [disabled]="sectionIndex === 0"
+            aria-label="Move section up"
+          >
+            <nz-icon nzType="arrow-up" />
+          </button>
+          <button
+            nz-button
+            nzType="text"
+            type="button"
+            (click)="move(form().sections, sectionIndex, 1)"
+            [disabled]="sectionIndex === form().sections.length - 1"
+            aria-label="Move section down"
+          >
+            <nz-icon nzType="arrow-down" />
+          </button>
+          <button
+            nz-button
+            nzType="text"
+            nzDanger
+            type="button"
+            nz-popconfirm
+            nzPopconfirmTitle="Remove this section and its lessons?"
+            (nzOnConfirm)="remove(form().sections, sectionIndex)"
+            aria-label="Remove section"
+          >
+            <nz-icon nzType="delete" />
+          </button>
+        </ng-template>
+
+        @for (lesson of section.lessons; track $index; let lessonIndex = $index) {
+          <div class="lesson">
+            <div class="lesson-head">
+              <span class="lesson-number">{{ lessonIndex + 1 }}</span>
+              <input
+                nz-input
+                [name]="'lesson-' + sectionIndex + '-' + lessonIndex"
+                [(ngModel)]="lesson.title"
+                placeholder="Lesson title"
+                aria-label="Lesson title"
+              />
+              <button
+                nz-button
+                nzType="text"
+                type="button"
+                (click)="move(section.lessons, lessonIndex, -1)"
+                [disabled]="lessonIndex === 0"
+                aria-label="Move lesson up"
+              >
+                <nz-icon nzType="arrow-up" />
+              </button>
+              <button
+                nz-button
+                nzType="text"
+                type="button"
+                (click)="move(section.lessons, lessonIndex, 1)"
+                [disabled]="lessonIndex === section.lessons.length - 1"
+                aria-label="Move lesson down"
+              >
+                <nz-icon nzType="arrow-down" />
+              </button>
+              <button
+                nz-button
+                nzType="text"
+                nzDanger
+                type="button"
+                (click)="remove(section.lessons, lessonIndex)"
+                aria-label="Remove lesson"
+              >
+                <nz-icon nzType="delete" />
+              </button>
+            </div>
+
+            <textarea
+              nz-input
+              class="intro"
+              [name]="'intro-' + sectionIndex + '-' + lessonIndex"
+              [(ngModel)]="lesson.introText"
+              cdkTextareaAutosize
+              [cdkAutosizeMinRows]="1"
+              [cdkAutosizeMaxRows]="8"
+              placeholder="Explanation shown above the exercise (optional)"
+              aria-label="Lesson explanation"
+            ></textarea>
+
+            <div class="exercise">
+              @if (lesson.h5pContentId) {
+                <nz-tag nzColor="blue">H5P · {{ lesson.h5pTitle || 'Exercise' }}</nz-tag>
+              } @else {
+                <nz-tag>No exercise yet</nz-tag>
+              }
+
+              <input
+                #file
+                type="file"
+                accept=".h5p"
+                hidden
+                (change)="onPackageChosen(lesson, $event)"
+                [attr.aria-label]="'Upload an H5P file for ' + lesson.title"
+              />
+              <button
+                nz-button
+                nzSize="small"
+                type="button"
+                (click)="file.click()"
+                [nzLoading]="lesson.uploading === true"
+              >
+                <nz-icon nzType="upload" />
+                {{ lesson.h5pContentId ? 'Replace with .h5p file' : 'Upload .h5p file' }}
+              </button>
+              <button
+                nz-button
+                nzSize="small"
+                type="button"
+                (click)="openExerciseEditor(sectionIndex, lessonIndex)"
+                nz-tooltip
+                nzTooltipTitle="Saves the course, then opens the H5P editor"
+              >
+                <nz-icon nzType="edit" />
+                {{ lesson.h5pContentId ? 'Edit in H5P editor' : 'Create in H5P editor' }}
+              </button>
+              @if (lesson.h5pContentId) {
+                <button nz-button nzSize="small" type="button" (click)="previewing.set(lesson)">
+                  <nz-icon nzType="eye" />
+                  Preview
+                </button>
+                <button nz-button nzSize="small" nzType="text" nzDanger type="button" (click)="detachExercise(lesson)">
+                  Remove exercise
+                </button>
+              }
+            </div>
+          </div>
+        } @empty {
+          <p class="muted">No lessons in this section yet.</p>
+        }
+
+        <button nz-button nzType="dashed" type="button" (click)="addLesson(section)">
+          <nz-icon nzType="plus" />
+          Add lesson
+        </button>
+      </nz-card>
+    }
+
+    <button nz-button type="button" (click)="addSection()">
+      <nz-icon nzType="plus" />
+      Add section
+    </button>
+  </form>
+</nz-spin>
+
+<nz-modal
+  [nzVisible]="previewing() !== null"
+  [nzTitle]="previewing()?.title ?? 'Preview'"
+  nzWidth="900px"
+  [nzFooter]="null"
+  (nzOnCancel)="previewing.set(null)"
+>
+  <ng-container *nzModalContent>
+    @if (previewing()?.h5pContentId; as contentId) {
+      <app-exercise-preview [contentId]="contentId" />
+    }
+  </ng-container>
+</nz-modal>

@@ -1,0 +1,31 @@
+{
+  "name": "speakukrainian",
+  "version": "0.1.0",
+  "private": true,
+  "packageManager": "pnpm@11.17.0",
+  "engines": {
+    "node": ">=22.18"
+  },
+  "scripts": {
+    "build": "turbo run build",
+    "dev": "turbo run dev",
+    "lint": "turbo run lint",
+    "test": "turbo run test",
+    "typecheck": "turbo run typecheck",
+    "h5p:fetch": "pnpm --filter @speakukrainian/scripts run h5p:fetch",
+    "format": "prettier --write \"**/*.{ts,html,scss,json,md,mjs,yml,yaml}\"",
+    "format:check": "prettier --check \"**/*.{ts,html,scss,json,md,mjs,yml,yaml}\"",
+    "db:start": "supabase start",
+    "db:stop": "supabase stop",
+    "db:reset": "supabase db reset",
+    "postinstall": "node -e \"const f='scripts/fetch-h5p-core.ts';const fs=require('node:fs');if(fs.existsSync(f)){process.exit(require('node:child_process').spawnSync(process.execPath,[f],{stdio:'inherit'}).status??1)}console.log('Skipping the H5P client asset fetch: '+f+' is not part of this install.')\""
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "eslint": "^10.8.0",
+    "prettier": "^3.6.2",
+    "turbo": "^2.10.8",
+    "typescript": "~6.0.0",
+    "typescript-eslint": "^8.66.0"
+  }
+}

@@ -1,0 +1,124 @@
+.alert {
+  margin-bottom: 16px;
+}
+
+.placeholder {
+  min-height: 240px;
+}
+
+.course-progress {
+  width: 240px;
+  flex: none;
+}
+
+.layout {
+  display: grid;
+  grid-template-columns: 300px minmax(0, 1fr);
+  gap: 16px;
+  align-items: start;
+}
+
+@media (max-width: 860px) {
+  .layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.section {
+  margin: 8px 16px 4px;
+  font-size: 13px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  color: rgba(0, 0, 0, 0.45);
+}
+
+.lessons {
+  list-style: none;
+  margin: 0 0 8px;
+  padding: 0;
+}
+
+.lesson {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  color: rgba(0, 0, 0, 0.88);
+  border-left: 3px solid transparent;
+
+  &:hover {
+    background: #fafafa;
+  }
+
+  &.active {
+    background: #e6f4ff;
+    border-left-color: #1677ff;
+    font-weight: 600;
+  }
+}
+
+.title {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.score {
+  flex: none;
+  font-size: 12px;
+  font-weight: 400;
+  color: rgba(0, 0, 0, 0.45);
+  font-variant-numeric: tabular-nums;
+}
+
+.done {
+  flex: none;
+  color: #52c41a;
+}
+
+.todo {
+  flex: none;
+  width: 14px;
+  height: 14px;
+  border: 1.5px solid #d9d9d9;
+  border-radius: 50%;
+}
+
+.empty {
+  padding: 8px 16px;
+}
+
+.lesson-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 12px;
+}
+
+.lesson-title {
+  margin: 0;
+  font-size: 20px;
+}
+
+.status {
+  color: rgba(0, 0, 0, 0.65);
+}
+
+.intro {
+  white-space: pre-line;
+  overflow-wrap: anywhere;
+}
+
+.pager {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 16px;
+}
+
+.after-ask {
+  display: flex;
+  gap: 8px;
+  margin: 16px 0 0;
+}

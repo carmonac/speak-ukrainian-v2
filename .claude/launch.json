@@ -1,0 +1,23 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "api",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": ["--filter", "@speakukrainian/api", "dev"],
+      "port": 8080
+    },
+    {
+      "name": "admin",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": ["--filter", "@speakukrainian/admin", "dev"],
+      "port": 4200
+    },
+    {
+      "name": "student",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": ["--filter", "@speakukrainian/student", "dev"],
+      "port": 4300
+    }
+  ]
+}

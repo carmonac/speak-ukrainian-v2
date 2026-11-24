@@ -1,0 +1,968 @@
+import 'reflect-metadata';
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { access } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { Readable } from 'node:stream';
+import { BadRequestException, HttpException, UnauthorizedException } from '@nestjs/common';
+import type { PipeTransform } from '@nestjs/common';
+import {
+  HTTP_CODE_METADATA,
+  INTERCEPTORS_METADATA,
+  PATH_METADATA,
+  ROUTE_ARGS_METADATA,
+} from '@nestjs/common/constants.js';
+import { RouteParamtypes } from '@nestjs/common/enums/route-paramtypes.enum.js';
+import type { ConfigService } from '@nestjs/config';
+import type { IUser } from '@lumieducation/h5p-server';
+import express from 'express';
+import type { NextFunction, Request, Response } from 'express';
+import request from 'supertest';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import {
+  MAX_H5P_UPLOAD_BYTES,
+  h5pEditorUploadTooLargeMessage,
+  type H5pSaveResult,
+  type SaveH5pContentInput,
+  type UserRole,
+} from '@speakukrainian/shared';
+import type { AuthenticatedUser } from '../auth/authenticated-user.js';
+import { IS_PUBLIC_KEY } from '../auth/public.decorator.js';
+import { ROLES_KEY } from '../auth/roles.decorator.js';
+import { UploadLimitInterceptor } from '../common/upload-limit.interceptor.js';
+import type { Env } from '../config/configuration.js';
+import { H5pEditorController } from './h5p-editor.controller.js';
+import type {
+  ContentParametersResult,
+  EditorModelResponse,
+  GetAjaxRequest,
+  H5pEditorService,
+  PostAjaxRequest,
+  TemporaryFileResult,
+} from './h5p-editor.service.js';
+import { toHttpException } from './h5p.errors.js';
+import type { RangeCallback } from './h5p.responses.js';
+import { H5P_URL_TOKEN_KEY } from './h5p.url-token.decorator.js';
+
+const CALLER: AuthenticatedUser = { uid: 'editor000001', email: 'e@x.local', role: 'admin' };
+
+/**
+ * The `IUser` the caller above becomes. Spelled out rather than taken from
+ * `h5pUserFor`, so the assertion is about the value and not about the function
+ * agreeing with itself: this id is the prefix every temporary file this caller
+ * writes is stored under.
+ */
+const CALLER_USER: IUser = { id: CALLER.uid, email: 'e@x.local', name: '', type: 'local' };
+
+/** A clip whose every window differs from every other, so a range assertion means something. */
+const CLIP = Buffer.from(Uint8Array.from({ length: 4096 }, (_value, index) => (index * 37) % 251));
+
+interface Recorded {
+  gets: { request: GetAjaxRequest; user: IUser }[];
+  posts: { request: PostAjaxRequest; user: IUser }[];
+  models: { contentId?: string; language?: string; user: IUser }[];
+  parameters: { contentId: string; user: IUser }[];
+  saves: { contentId?: string; input: SaveH5pContentInput; caller: { uid: string } }[];
+  temporaryFiles: string[];
+}
+
+/** Enough of an editor model to tell one call's answer from another's. */
+const MODEL: EditorModelResponse = {
+  integration: {
+    editor: { nodeVersionId: 'from-the-service' },
+  } as EditorModelResponse['integration'],
+  scripts: ['/api/h5p/core/js/h5p.js'],
+  styles: ['/api/h5p/core/styles/h5p.css'],
+};
+
+/** The one result shape both ways of creating an exercise answer with. */
+const SAVED: H5pSaveResult = {
+  contentId: 'ff6c4a3a4d1f4f0f9a4b9d3b2f5a1c77',
+  title: 'Present perfect drill',
+  mainLibrary: 'SpeakTest.Main 1.0',
+};
+
+/** A body in the shape `GET params` hands back, which is what the widget posts. */
+const SAVE_BODY: SaveH5pContentInput = {
+  library: 'SpeakTest.Main 1.0',
+  params: {
+    metadata: { title: 'Present perfect drill', language: 'en' },
+    params: { question: 'Have you ever been to Kyiv?' },
+  },
+};
+
+/** What `getContentParameters` answers with, trimmed to the fields the route passes on. */
+const PARAMETERS = {
+  h5p: { title: 'Present perfect drill' },
+  library: 'SpeakTest.Main 1.0',
+  params: { metadata: { title: 'Present perfect drill' }, params: { question: 'Kyiv?' } },
+} as unknown as ContentParametersResult;
+
+interface Stub {
+  service: H5pEditorService;
+  recorded: Recorded;
+  /** Makes the next `postAjax` reject, so the upload cleanup can be checked on the failure path. */
+  failNextPost: (error: Error) => void;
+}
+
+function createStub(): Stub {
+  const recorded: Recorded = {
+    gets: [],
+    posts: [],
+    models: [],
+    parameters: [],
+    saves: [],
+    temporaryFiles: [],
+  };
+  let postFailure: Error | null = null;
+
+  const service = {
+    getAjax: (ajaxRequest: GetAjaxRequest, user: IUser): Promise<unknown> => {
+      recorded.gets.push({ request: ajaxRequest, user });
+      return Promise.resolve({ answered: ajaxRequest.action });
+    },
+    postAjax: (ajaxRequest: PostAjaxRequest, user: IUser): Promise<unknown> => {
+      recorded.posts.push({ request: ajaxRequest, user });
+      if (postFailure) {
+        const failure = postFailure;
+        postFailure = null;
+        return Promise.reject(failure);
+      }
+      return Promise.resolve({ answered: ajaxRequest.action });
+    },
+    editorModel: (
+      contentId: string | undefined,
+      language: string | undefined,
+      user: IUser,
+    ): Promise<EditorModelResponse> => {
+      recorded.models.push({ contentId, language, user });
+      return Promise.resolve(MODEL);
+    },
+    contentParameters: (contentId: string, user: IUser): Promise<ContentParametersResult> => {
+      recorded.parameters.push({ contentId, user });
+      return Promise.resolve(PARAMETERS);
+    },
+    temporaryFile: (
+      filename: string,
+      _user: IUser,
+      range: RangeCallback,
+    ): Promise<TemporaryFileResult> => {
+      recorded.temporaryFiles.push(filename);
+
+      // The real service maps the library's errors onto HTTP before they leave
+      // it, and `rangeCallbackFor` throws its 416 from inside this call — so a
+      // stub that skipped the mapping would answer 500 for a range the route
+      // handles correctly in production.
+      try {
+        const slice = range(CLIP.length);
+
+        return Promise.resolve({
+          mimetype: 'audio/mpeg',
+          totalLength: CLIP.length,
+          ...(slice ? { range: slice } : {}),
+          stream: Readable.from([slice ? CLIP.subarray(slice.start, slice.end + 1) : CLIP]),
+        });
+      } catch (error) {
+        return Promise.reject(toHttpException(error) ?? error);
+      }
+    },
+    save: (
+      contentId: string | undefined,
+      input: SaveH5pContentInput,
+      caller: { uid: string },
+    ): Promise<H5pSaveResult> => {
+      recorded.saves.push({ contentId, input, caller });
+      return Promise.resolve({ ...SAVED, contentId: contentId ?? SAVED.contentId });
+    },
+    // The sweep moved onto the service's own mutating operations, so nothing
+    // in this file calls it; `h5p-editor.service.spec.ts` is where it is now
+    // asserted, against real objects rather than a counter.
+    maybeSweep: (): Promise<void> => Promise.resolve(),
+  } as unknown as H5pEditorService;
+
+  return {
+    service,
+    recorded,
+    failNextPost: (error: Error) => {
+      postFailure = error;
+    },
+  };
+}
+
+/** Long enough that no test here trips the stalled-read watchdog by accident. */
+const config = { get: (): number => 60_000 } as unknown as ConfigService<Env, true>;
+
+function createController(stub: Stub): H5pEditorController {
+  return new H5pEditorController(stub.service, config);
+}
+
+async function exists(path: string): Promise<boolean> {
+  return access(path).then(
+    () => true,
+    () => false,
+  );
+}
+
+describe('H5pEditorController', () => {
+  let stub: Stub;
+  let controller: H5pEditorController;
+
+  beforeEach(() => {
+    stub = createStub();
+    controller = createController(stub);
+  });
+
+  describe('GET ajax', () => {
+    it('threads the query through and acts as the authenticated caller', async () => {
+      await controller.ajaxGet('libraries', 'H5P.MultiChoice', '1', '16', 'uk', CALLER);
+
+      expect(stub.recorded.gets).toEqual([
+        {
+          request: {
+            action: 'libraries',
+            machineName: 'H5P.MultiChoice',
+            majorVersion: '1',
+            minorVersion: '16',
+            language: 'uk',
+          },
+          // The owner of every temporary file this caller writes, so it may
+          // never come from anywhere but the verified token.
+          user: { id: CALLER.uid, email: CALLER.email, name: '', type: 'local' },
+        },
+      ]);
+    });
+
+    it.each([['not a code'], ['e'], ['english'], ['uk-'], ['../etc']])(
+      'refuses the language %j with a 400 and never reaches the service',
+      async (language) => {
+        // `H5PEditor.validateLanguageCode` refuses these with a plain `Error`,
+        // which the mapper correctly declines — so without this the caller gets
+        // a 500 for a query parameter they typed.
+        await expect(
+          controller.ajaxGet('libraries', 'H5P.MultiChoice', '1', '16', language, CALLER),
+        ).rejects.toThrow(BadRequestException);
+        expect(stub.recorded.gets).toEqual([]);
+      },
+    );
+
+    it.each([['en'], ['uk'], ['zh-hans'], ['pt-BR']])(
+      'accepts the language %j',
+      async (language) => {
+        await controller.ajaxGet('libraries', 'H5P.MultiChoice', '1', '16', language, CALLER);
+
+        expect(stub.recorded.gets[0]?.request.language).toBe(language);
+      },
+    );
+
+    it.each([['../../etc'], ['H5P Multi Choice'], ['H5P.Multi/Choice'], ['']])(
+      'refuses the machine name %j with a 400 and never reaches the service',
+      async (machineName) => {
+        // `LibraryName.validateMachineName` refuses these with a plain `Error`
+        // — a 500 for a query string the caller typed. No traversal follows
+        // from the first one, since `libraryPrefix` refuses it again, but the
+        // status is wrong either way.
+        await expect(
+          controller.ajaxGet('libraries', machineName, '1', '16', 'en', CALLER),
+        ).rejects.toThrow(BadRequestException);
+        expect(stub.recorded.gets).toEqual([]);
+      },
+    );
+
+    it.each([
+      ['a non-numeric major', 'x', '16'],
+      ['a non-numeric minor', '1', 'y'],
+      ['an empty major', '', '16'],
+      ['a word for a version', 'one', 'two'],
+    ])('refuses %s with a 400 and never reaches the service', async (_shape, major, minor) => {
+      // `LibraryName.validate` is where these are noticed, and it raises a
+      // plain `Error`, which the mapper declines: a 500.
+      await expect(
+        controller.ajaxGet('libraries', 'H5P.MultiChoice', major, minor, 'en', CALLER),
+      ).rejects.toThrow(BadRequestException);
+      expect(stub.recorded.gets).toEqual([]);
+    });
+
+    it('refuses a machine name for an action that would have ignored it', async () => {
+      // The choice recorded on `ajaxGet`, pinned so that "validate per action"
+      // is a decision to revisit rather than a change nothing notices:
+      // `getAjax` reads `machineName` only on its `libraries` branch, and
+      // mirroring that branch structure here would put the library's internals
+      // in this controller.
+      await expect(
+        controller.ajaxGet('content-type-cache', 'not valid', undefined, undefined, 'en', CALLER),
+      ).rejects.toThrow(BadRequestException);
+      expect(stub.recorded.gets).toEqual([]);
+    });
+
+    it('leaves an absent version to the endpoint, which names all three at once', async () => {
+      // The library's own 400 for `libraries` with no versions is a better
+      // answer than one this route invents, and it is the *invalid* version —
+      // not the missing one — that was the 500.
+      await controller.ajaxGet('libraries', 'H5P.MultiChoice', undefined, undefined, 'en', CALLER);
+
+      expect(stub.recorded.gets[0]?.request).toMatchObject({
+        machineName: 'H5P.MultiChoice',
+        majorVersion: undefined,
+        minorVersion: undefined,
+      });
+    });
+
+    it('accepts the versions the endpoint accepts, unparsed', async () => {
+      await controller.ajaxGet('libraries', 'H5P.MultiChoice', '1', '16', 'en', CALLER);
+
+      expect(stub.recorded.gets[0]?.request.majorVersion).toBe('1');
+      expect(stub.recorded.gets[0]?.request.minorVersion).toBe('16');
+    });
+
+    it('treats an absent language as none rather than as a bad one', async () => {
+      await controller.ajaxGet('content-type-cache', undefined, undefined, undefined, '', CALLER);
+
+      expect(stub.recorded.gets[0]?.request.language).toBeUndefined();
+    });
+
+    it('refuses a request the guard somehow let through without a caller', async () => {
+      await expect(
+        controller.ajaxGet('content-type-cache', undefined, undefined, undefined, undefined),
+      ).rejects.toThrow(UnauthorizedException);
+      expect(stub.recorded.gets).toEqual([]);
+    });
+  });
+
+  describe('POST ajax', () => {
+    let uploads: string;
+
+    beforeAll(async () => {
+      uploads = await mkdtemp(join(tmpdir(), 'h5p-ajax-uploads-'));
+    });
+
+    afterAll(async () => {
+      await rm(uploads, { recursive: true, force: true });
+    });
+
+    const multerFile = async (
+      fieldname: string,
+      originalname: string,
+      mimetype: string,
+    ): Promise<Express.Multer.File> => {
+      const path = join(uploads, `${fieldname}-${originalname}-${String(Date.now())}`);
+      const body = Buffer.from(`the bytes of ${originalname}`);
+      await writeFile(path, body);
+
+      return {
+        fieldname,
+        originalname,
+        encoding: '7bit',
+        mimetype,
+        size: body.length,
+        destination: uploads,
+        filename: path,
+        path,
+        buffer: Buffer.alloc(0),
+        stream: Readable.from([]),
+      };
+    };
+
+    it('hands the file part on as a path and no buffer, so a big upload is never held in memory', async () => {
+      const file = await multerFile('file', 'clip.mp3', 'audio/mpeg');
+
+      await controller.ajaxPost(
+        'files',
+        { field: '{"type":"audio"}' },
+        'en',
+        { file: [file] },
+        CALLER,
+      );
+
+      const [post] = stub.recorded.posts;
+      expect(post?.request.upload).toEqual({
+        mimetype: 'audio/mpeg',
+        name: 'clip.mp3',
+        size: file.size,
+        tempFilePath: file.path,
+      });
+      // `file.data?.length > 0` is false for `undefined`, which is what makes
+      // the library read the path rather than a buffer.
+      expect(post?.request.upload).not.toHaveProperty('data');
+      expect(post?.request.packageUpload).toBeUndefined();
+    });
+
+    it('hands the h5p part on separately, since library-upload reads a different field', async () => {
+      const packageFile = await multerFile('h5p', 'drill.h5p', 'application/zip');
+
+      await controller.ajaxPost('library-upload', {}, 'en', { h5p: [packageFile] }, CALLER);
+
+      const [post] = stub.recorded.posts;
+      expect(post?.request.packageUpload?.name).toBe('drill.h5p');
+      expect(post?.request.upload).toBeUndefined();
+    });
+
+    it('removes both uploads after a request that succeeded', async () => {
+      // Multer does not clean up after a successful request, and the container
+      // filesystem is not ours to litter.
+      const file = await multerFile('file', 'clip.mp3', 'audio/mpeg');
+      const packageFile = await multerFile('h5p', 'drill.h5p', 'application/zip');
+
+      await controller.ajaxPost('files', {}, 'en', { file: [file], h5p: [packageFile] }, CALLER);
+
+      expect(await exists(file.path)).toBe(false);
+      expect(await exists(packageFile.path)).toBe(false);
+    });
+
+    it('removes the upload after a request that failed, without replacing the failure', async () => {
+      const file = await multerFile('file', 'clip.mp3', 'audio/mpeg');
+      stub.failNextPost(new BadRequestException('that file type is not allowed'));
+
+      await expect(
+        controller.ajaxPost('files', {}, 'en', { file: [file] }, CALLER),
+      ).rejects.toThrow('that file type is not allowed');
+      expect(await exists(file.path)).toBe(false);
+    });
+
+    it('does not let a missing temp file turn a successful upload into a 500', async () => {
+      // `rm` is best-effort on purpose: an upload that was stored and answered
+      // must not be reported as failed because a cleanup could not run.
+      const file = await multerFile('file', 'clip.mp3', 'audio/mpeg');
+      await rm(file.path);
+
+      await expect(
+        controller.ajaxPost('files', {}, 'en', { file: [file] }, CALLER),
+      ).resolves.toEqual({ answered: 'files' });
+    });
+
+    it('refuses an invalid language before the upload is handed on', async () => {
+      const file = await multerFile('file', 'clip.mp3', 'audio/mpeg');
+
+      await expect(
+        controller.ajaxPost('files', {}, 'not a code', { file: [file] }, CALLER),
+      ).rejects.toThrow(BadRequestException);
+      expect(stub.recorded.posts).toEqual([]);
+      // The cleanup still runs: the file is on disk either way.
+      expect(await exists(file.path)).toBe(false);
+    });
+
+    it('refuses a request the guard somehow let through without a caller', async () => {
+      await expect(controller.ajaxPost('files', {}, 'en', {}, undefined)).rejects.toThrow(
+        UnauthorizedException,
+      );
+      expect(stub.recorded.posts).toEqual([]);
+    });
+  });
+});
+
+describe('H5pEditorController editor model', () => {
+  let stub: Stub;
+  let controller: H5pEditorController;
+
+  beforeEach(() => {
+    stub = createStub();
+    controller = createController(stub);
+  });
+
+  it('asks for a new exercise when the path carries no content id', async () => {
+    const model = await controller.editorModel(undefined, undefined, CALLER);
+
+    expect(stub.recorded.models).toEqual([
+      { contentId: undefined, language: undefined, user: CALLER_USER },
+    ]);
+    expect(model).toEqual(MODEL);
+  });
+
+  it('asks for the exercise the path named, as the authenticated caller', async () => {
+    await controller.editorModel('ff6c4a3a4d1f4f0f9a4b9d3b2f5a1c77', 'es', CALLER);
+
+    expect(stub.recorded.models).toEqual([
+      {
+        contentId: 'ff6c4a3a4d1f4f0f9a4b9d3b2f5a1c77',
+        language: 'es',
+        user: CALLER_USER,
+      },
+    ]);
+  });
+
+  it.each([['not a code'], ['english'], ['uk-'], ['../etc']])(
+    'refuses the language %j with a 400 and never reaches the service',
+    async (language) => {
+      // `H5PEditor.render` calls `validateLanguageCode`, which refuses these
+      // with a plain `Error` — a 500 for a query parameter the caller typed.
+      await expect(controller.editorModel(undefined, language, CALLER)).rejects.toThrow(
+        BadRequestException,
+      );
+      expect(stub.recorded.models).toEqual([]);
+    },
+  );
+
+  it('refuses a request the guard somehow let through without a caller', async () => {
+    await expect(controller.editorModel(undefined, undefined, undefined)).rejects.toThrow(
+      UnauthorizedException,
+    );
+    expect(stub.recorded.models).toEqual([]);
+  });
+
+  it('reads the parameters of the exercise the path named, as the caller', async () => {
+    const answer = await controller.contentParameters('ff6c4a3a4d1f4f0f9a4b9d3b2f5a1c77', CALLER);
+
+    expect(stub.recorded.parameters).toEqual([
+      { contentId: 'ff6c4a3a4d1f4f0f9a4b9d3b2f5a1c77', user: CALLER_USER },
+    ]);
+    expect(answer).toEqual(PARAMETERS);
+  });
+
+  it('refuses a parameters request the guard somehow let through without a caller', async () => {
+    await expect(controller.contentParameters('ff6c4a3a', undefined)).rejects.toThrow(
+      UnauthorizedException,
+    );
+    expect(stub.recorded.parameters).toEqual([]);
+  });
+
+  it('creates without a content id, so the library assigns one', async () => {
+    const saved = await controller.createContent(SAVE_BODY, CALLER);
+
+    expect(stub.recorded.saves).toEqual([
+      { contentId: undefined, input: SAVE_BODY, caller: CALLER },
+    ]);
+    expect(saved).toEqual(SAVED);
+  });
+
+  it('saves over the exercise the path named, keeping its id', async () => {
+    const saved = await controller.updateContent('an-existing-content-id', SAVE_BODY, CALLER);
+
+    expect(stub.recorded.saves[0]?.contentId).toBe('an-existing-content-id');
+    expect(saved.contentId).toBe('an-existing-content-id');
+  });
+
+  it.each([
+    ['create', (c: H5pEditorController) => c.createContent(SAVE_BODY, undefined)],
+    ['update', (c: H5pEditorController) => c.updateContent('an-id', SAVE_BODY, undefined)],
+  ])('refuses a %s the guard somehow let through without a caller', async (_name, call) => {
+    await expect(call(controller)).rejects.toThrow(UnauthorizedException);
+    expect(stub.recorded.saves).toEqual([]);
+  });
+});
+
+/**
+ * `temp-files` over a real Express app, with the service replaced by a stub that
+ * answers *anything* it is asked for.
+ *
+ * The same shape and the same reason as `h5p-public.controller.spec.ts`: the
+ * layers below have traversal guards of their own, so a suite running the whole
+ * stack still passes with the controller's guard deleted. A stub that would
+ * happily serve a traversed path is what makes this able to fail. Express
+ * rather than a hand-built request because the decoding is half the rule —
+ * Express 5 hands `*path` back as already-decoded segments, so `..%2f..%2fx`
+ * arrives inside one of them.
+ */
+describe('H5pEditorController temp-files', () => {
+  let stub: Stub;
+  let app: express.Express;
+  let escaped: unknown;
+
+  beforeEach(() => {
+    stub = createStub();
+    const controller = createController(stub);
+    escaped = undefined;
+
+    app = express();
+    app.get('/h5p/temp-files/*path', (req: Request, res: Response, next: NextFunction) => {
+      controller.temporaryFile(req, res, CALLER).catch(next);
+    });
+    app.use((error: Error, _req: Request, res: Response, _next: NextFunction) => {
+      escaped = error;
+      res.status(error instanceof HttpException ? error.getStatus() : 500).end();
+    });
+  });
+
+  afterEach(() => {
+    escaped = undefined;
+  });
+
+  const escapedMessage = (): string => {
+    if (!(escaped instanceof HttpException)) {
+      throw new Error(`Expected an HttpException to escape the route, got ${String(escaped)}.`);
+    }
+    return escaped.message;
+  };
+
+  it.each([
+    ['a traversal inside one decoded segment', '/h5p/temp-files/images/..%2f..%2fh5p.json'],
+    ['a doubly encoded dot-dot', '/h5p/temp-files/%2e%2e%2f%2e%2e%2fh5p.json'],
+    ['a backslash separator', '/h5p/temp-files/images/..%5c..%5ch5p.json'],
+    ['an absolute path', '/h5p/temp-files/%2fetc%2fpasswd'],
+  ])('refuses %s before it reaches the service', async (_shape, path) => {
+    const response = await request(app).get(path);
+
+    expect(response.status).toBe(400);
+    // This sentence is the controller's alone; asserting the status would pass
+    // for a refusal that happened somewhere else.
+    expect(escapedMessage()).toBe('The requested file path is not valid.');
+    expect(stub.recorded.temporaryFiles).toEqual([]);
+  });
+
+  it('serves an ordinary path, so the guard is not simply refusing everything', async () => {
+    const response = await request(app)
+      .get('/h5p/temp-files/images/image-aB34xQz9.png')
+      .expect(200);
+
+    expect(stub.recorded.temporaryFiles).toEqual(['images/image-aB34xQz9.png']);
+    expect(Buffer.from(response.body as Buffer)).toEqual(CLIP);
+  });
+
+  it('offers ranges and refuses to let any cache keep the file', async () => {
+    const response = await request(app).get('/h5p/temp-files/audios/audio.mp3').expect(200);
+
+    expect(response.headers['accept-ranges']).toBe('bytes');
+    expect(response.headers['content-length']).toBe(String(CLIP.length));
+    // Per-user, short-lived and role-guarded: a shared cache must never hold
+    // one, and a browser holding a stale copy under a name the next upload can
+    // reuse is worse than a second request.
+    expect(response.headers['cache-control']).toBe('private, no-store');
+  });
+
+  it('answers a byte range with 206 and exactly those bytes', async () => {
+    const response = await request(app)
+      .get('/h5p/temp-files/audios/audio.mp3')
+      .set('Range', 'bytes=100-199')
+      .expect(206);
+
+    expect(response.headers['content-range']).toBe(`bytes 100-199/${String(CLIP.length)}`);
+    expect(response.headers['cache-control']).toBe('private, no-store');
+    expect(Buffer.from(response.body as Buffer)).toEqual(CLIP.subarray(100, 200));
+  });
+
+  it('answers a range past the end with 416 and the real size', async () => {
+    const response = await request(app)
+      .get('/h5p/temp-files/audios/audio.mp3')
+      .set('Range', `bytes=${String(CLIP.length + 10)}-${String(CLIP.length + 20)}`);
+
+    expect(response.status).toBe(416);
+    expect(response.headers['content-range']).toBe(`bytes */${String(CLIP.length)}`);
+  });
+});
+
+/**
+ * The tokenised preview route, over the same real Express app.
+ *
+ * What this file can say about it is what the *path* means: the token is its
+ * own parameter, so the wildcard is the filename alone with nothing to strip,
+ * and the traversal guard still runs. Who the caller is, is the guard's
+ * business and is asserted in `h5p-url-token.guard.spec.ts`; that the two
+ * together authenticate a real request is the e2e's.
+ */
+describe('H5pEditorController temp/:token', () => {
+  let stub: Stub;
+  let app: express.Express;
+  let escaped: unknown;
+
+  beforeEach(() => {
+    stub = createStub();
+    const controller = createController(stub);
+    escaped = undefined;
+
+    app = express();
+    app.get('/h5p/temp/:token/*path', (req: Request, res: Response, next: NextFunction) => {
+      controller.temporaryFileByToken(req, res, CALLER).catch(next);
+    });
+    app.use((error: Error, _req: Request, res: Response, _next: NextFunction) => {
+      escaped = error;
+      res.status(error instanceof HttpException ? error.getStatus() : 500).end();
+    });
+  });
+
+  it('reads the filename out of the wildcard with the token left out of it', async () => {
+    const response = await request(app)
+      .get('/h5p/temp/a-token-that-the-guard-consumed/images/image-aB34xQz9.png')
+      .expect(200);
+
+    expect(stub.recorded.temporaryFiles).toEqual(['images/image-aB34xQz9.png']);
+    expect(Buffer.from(response.body as Buffer)).toEqual(CLIP);
+  });
+
+  it('serves the same bytes and headers as the bearer route, ranges included', async () => {
+    const response = await request(app)
+      .get('/h5p/temp/a-token-that-the-guard-consumed/audios/audio.mp3')
+      .set('Range', 'bytes=100-199')
+      .expect(206);
+
+    expect(response.headers['content-range']).toBe(`bytes 100-199/${String(CLIP.length)}`);
+    expect(response.headers['cache-control']).toBe('private, no-store');
+    expect(Buffer.from(response.body as Buffer)).toEqual(CLIP.subarray(100, 200));
+  });
+
+  it('refuses a traversal in the filename before it reaches the service', async () => {
+    const response = await request(app).get(
+      '/h5p/temp/a-token-that-the-guard-consumed/images/..%2f..%2fh5p.json',
+    );
+
+    expect(response.status).toBe(400);
+    expect(escaped instanceof HttpException ? escaped.message : escaped).toBe(
+      'The requested file path is not valid.',
+    );
+    expect(stub.recorded.temporaryFiles).toEqual([]);
+  });
+});
+
+interface MulterInstance {
+  limits?: { fileSize?: number; files?: number };
+  fileFilter?: (
+    request: unknown,
+    file: { originalname: string },
+    callback: (error: Error | null, acceptFile: boolean) => void,
+  ) => void;
+}
+
+/** A multer-backed interceptor mixin, which holds its options on `multer`. */
+interface FileInterceptorMixin {
+  multer: MulterInstance;
+}
+
+/**
+ * Instantiating the mixin is the only way to see which options the interceptor
+ * was given: they are captured in its closure and reachable only through the
+ * multer instance the constructor builds.
+ */
+function multerOf(entry: unknown): MulterInstance {
+  if (typeof entry !== 'function') {
+    throw new Error('expected a FileFieldsInterceptor mixin class, got ' + typeof entry);
+  }
+  const Mixin = entry as new () => FileInterceptorMixin;
+  return new Mixin().multer;
+}
+
+/** Runs the route's own `fileFilter` over a filename, as `h5p.controller.spec.ts` does. */
+function accepts(instance: MulterInstance, originalname: string): boolean {
+  const filter = instance.fileFilter;
+  if (!filter) {
+    throw new Error('the route was given multer options with no fileFilter at all');
+  }
+
+  let outcome: boolean | undefined;
+  filter(null, { originalname }, (error, acceptFile) => {
+    outcome = error === null && acceptFile;
+  });
+  if (outcome === undefined) {
+    throw new Error(`fileFilter never called back for ${originalname}`);
+  }
+  return outcome;
+}
+
+/**
+ * The pipes Nest will run on one argument of a handler, read off the metadata
+ * the decorators wrote rather than restated here.
+ *
+ * A named `@Param`, or the `@Body` when `name` is omitted — the body's entry
+ * carries no name, and its key is `RouteParamtypes.BODY`.
+ */
+function paramPipesOf(handler: string, name?: string): PipeTransform<unknown, unknown>[] {
+  const metadata = (Reflect.getMetadata(ROUTE_ARGS_METADATA, H5pEditorController, handler) ??
+    {}) as Record<string, { data?: unknown; pipes?: unknown[] }>;
+  const parameter = Object.entries(metadata).find(([key, entry]) =>
+    name === undefined ? key.startsWith(`${RouteParamtypes.BODY}:`) : entry.data === name,
+  )?.[1];
+
+  if (!parameter) {
+    throw new Error(`${handler} has no ${name === undefined ? 'body' : `parameter named ${name}`}`);
+  }
+  return (parameter.pipes ?? []) as PipeTransform<unknown, unknown>[];
+}
+
+/** Runs an argument's pipes in order, as Nest does before calling the handler. */
+function throughPipes(handler: string, name: string | undefined, value: unknown): unknown {
+  const pipes = paramPipesOf(handler, name);
+  if (pipes.length === 0) {
+    throw new Error(`${handler} validates no ${name ?? 'body'} at all`);
+  }
+
+  return pipes.reduce<unknown>(
+    (carried, pipe) =>
+      pipe.transform(carried, { type: name === undefined ? 'body' : 'param', data: name }),
+    value,
+  );
+}
+
+describe('H5pEditorController route metadata', () => {
+  const routes = [
+    ['ajaxGet', H5pEditorController.prototype.ajaxGet],
+    ['ajaxPost', H5pEditorController.prototype.ajaxPost],
+    ['editorModel', H5pEditorController.prototype.editorModel],
+    ['contentParameters', H5pEditorController.prototype.contentParameters],
+    ['createContent', H5pEditorController.prototype.createContent],
+    ['updateContent', H5pEditorController.prototype.updateContent],
+    ['temporaryFile', H5pEditorController.prototype.temporaryFile],
+    ['temporaryFileByToken', H5pEditorController.prototype.temporaryFileByToken],
+  ] as const;
+
+  /** Exactly the routes Joubel's own client drives, which send no header. */
+  const urlTokenRoutes = new Set(['ajaxGet', 'ajaxPost', 'temporaryFileByToken']);
+
+  // The file boundary, pinned. `temp-files` is the one a future contributor is
+  // most likely to relax to `@Public()`, because that looks like a fix for the
+  // editor's own `<img>` preview — and it is not: the URL carries no owner id,
+  // so an unauthenticated request cannot resolve which object it means, and the
+  // filename is unique only within an owner. `temporaryFileByToken` is what the
+  // right fix looks like: a *second* route whose URL does name an owner, still
+  // `@Roles('admin')`, still not public.
+  it.each(routes)('restricts %s to editors and above', (_name, route) => {
+    expect(Reflect.getMetadata(ROLES_KEY, route) as UserRole[] | undefined).toEqual(['admin']);
+  });
+
+  it.each(routes)('does not mark %s public', (_name, route) => {
+    expect(Reflect.getMetadata(IS_PUBLIC_KEY, route)).toBeUndefined();
+  });
+
+  it.each(routes)('decides deliberately whether %s accepts a URL token', (name, route) => {
+    // Driven off the same list as the two cases above, so a route cannot be
+    // added to this file without a decision about the second credential.
+    // `@H5pUrlToken()` is not a relaxation — it never replaces `@Roles` and is
+    // never `@Public()` — but it is the only place a caller can be identified
+    // from something in a URL, so which routes carry it is worth pinning.
+    expect(Reflect.getMetadata(H5P_URL_TOKEN_KEY, route)).toBe(
+      urlTokenRoutes.has(name) ? true : undefined,
+    );
+  });
+
+  it('registers the tokenised preview on a path that cannot shadow temp-files', () => {
+    // `temp-files/:token/*path` and `temp-files/*path` would both match
+    // `/temp-files/images/x.png`, and only declaration order would decide which
+    // one answered — the same silent class as two stacked `@Get` decorators.
+    // A distinct literal first segment removes the question, and this is what
+    // refuses a "simplification" back to the overlapping pair.
+    expect(
+      Reflect.getMetadata(PATH_METADATA, H5pEditorController.prototype.temporaryFileByToken),
+    ).toBe('temp/:token/*path');
+    expect(Reflect.getMetadata(PATH_METADATA, H5pEditorController.prototype.temporaryFile)).toBe(
+      'temp-files/*path',
+    );
+  });
+
+  it('puts the limit interceptor ahead of multer with the editor wording', () => {
+    // Reversed, multer aborts the oversize upload before the interceptor is in
+    // the chain and the 413 falls back to its bare `File too large`.
+    const [limit, upload, ...rest] =
+      (Reflect.getMetadata(INTERCEPTORS_METADATA, H5pEditorController.prototype.ajaxPost) as
+        unknown[] | undefined) ?? [];
+
+    expect(limit).toBeInstanceOf(UploadLimitInterceptor);
+    expect((limit as UploadLimitInterceptor).message).toBe(h5pEditorUploadTooLargeMessage());
+    expect(multerOf(upload).limits).toMatchObject({ fileSize: MAX_H5P_UPLOAD_BYTES, files: 1 });
+    expect(rest).toEqual([]);
+  });
+
+  it('installs no filter of its own, because the gate here is per action', () => {
+    // `action=files` is gated by `config.contentWhitelist` and
+    // `action=library-upload` by the `.h5p` extension, both inside the library.
+    // A filter here could only be one of the two, and would refuse whatever the
+    // other action legitimately accepts — including the `.h5p` the package
+    // route insists on and the `.png` it refuses.
+    const multer = multerOf(
+      (
+        Reflect.getMetadata(INTERCEPTORS_METADATA, H5pEditorController.prototype.ajaxPost) as
+          unknown[] | undefined
+      )?.[1],
+    );
+
+    expect(accepts(multer, 'clip.png')).toBe(true);
+    expect(accepts(multer, 'drill.h5p')).toBe(true);
+  });
+
+  it('answers the ajax POST 200, since four of its five actions create nothing', () => {
+    // Nest's default is 201. The library's endpoint documentation says each of
+    // these must come back as 200, and `libraries`, `translations`, `filter`
+    // and `library-upload` are reads the H5P client happens to send as POSTs.
+    expect(Reflect.getMetadata(HTTP_CODE_METADATA, H5pEditorController.prototype.ajaxPost)).toBe(
+      200,
+    );
+  });
+
+  it.each([
+    ['ajaxGet', H5pEditorController.prototype.ajaxGet],
+    ['editorModel', H5pEditorController.prototype.editorModel],
+    ['contentParameters', H5pEditorController.prototype.contentParameters],
+    ['createContent', H5pEditorController.prototype.createContent],
+    ['updateContent', H5pEditorController.prototype.updateContent],
+    ['temporaryFile', H5pEditorController.prototype.temporaryFile],
+    ['temporaryFileByToken', H5pEditorController.prototype.temporaryFileByToken],
+  ] as const)('installs no upload interceptor on %s, which takes no file', (_name, route) => {
+    expect(Reflect.getMetadata(INTERCEPTORS_METADATA, route)).toBeUndefined();
+  });
+
+  it('registers the editor model on both paths, as one array and not two decorators', () => {
+    // **The whole reason this assertion exists.** Express 5 has no
+    // `:contentId?`, and two stacked `@Get`s do not register two routes:
+    // `RequestMapping` writes `PATH_METADATA` with a single value, so the
+    // second overwrites the first and one path silently ceases to exist —
+    // nothing throws, and every unit test that calls the handler directly
+    // still passes.
+    expect(Reflect.getMetadata(PATH_METADATA, H5pEditorController.prototype.editorModel)).toEqual([
+      'editor',
+      'editor/:contentId',
+    ]);
+  });
+
+  it('validates the content id in the path, and tolerates its absence', () => {
+    // `.optional()` is load-bearing: Nest runs a param pipe even when the
+    // parameter is absent, so a bare `documentIdSchema` would turn
+    // `GET /api/h5p/editor` — the route for an exercise that does not exist
+    // yet — into a 400.
+    expect(throughPipes('editorModel', 'contentId', undefined)).toBeUndefined();
+    expect(throughPipes('editorModel', 'contentId', 'ff6c4a3a-4d1f-4f0f-9a4b-9d3b2f5a1c77')).toBe(
+      'ff6c4a3a-4d1f-4f0f-9a4b-9d3b2f5a1c77',
+    );
+  });
+
+  it.each([['../etc'], ['a/b'], ['has.dots'], ['']])(
+    'refuses the content id %j in the path',
+    (contentId) => {
+      expect(() => throughPipes('editorModel', 'contentId', contentId)).toThrow(
+        BadRequestException,
+      );
+    },
+  );
+
+  it('answers a create 201 and a save over existing content 200', () => {
+    // Nest's default is 201, which is why `createContent` carries no metadata
+    // of its own: it really did create one. 201 for a save that changed
+    // content the caller already named would be a lie, so `updateContent`
+    // overrides it.
+    expect(
+      Reflect.getMetadata(HTTP_CODE_METADATA, H5pEditorController.prototype.createContent),
+    ).toBeUndefined();
+    expect(
+      Reflect.getMetadata(HTTP_CODE_METADATA, H5pEditorController.prototype.updateContent),
+    ).toBe(200);
+  });
+
+  it('registers the two save routes on their own paths', () => {
+    expect(Reflect.getMetadata(PATH_METADATA, H5pEditorController.prototype.createContent)).toBe(
+      'editor',
+    );
+    expect(Reflect.getMetadata(PATH_METADATA, H5pEditorController.prototype.updateContent)).toBe(
+      'editor/:contentId',
+    );
+  });
+
+  it.each([['createContent'], ['updateContent']])('validates the body of %s', (handler) => {
+    // A body the schema refuses never reaches the library, where a missing
+    // title is a plain `Error` and a 500.
+    expect(() =>
+      throughPipes(handler, undefined, { library: 'SpeakTest.Main 1.0', params: { params: {} } }),
+    ).toThrow(BadRequestException);
+    expect(throughPipes(handler, undefined, SAVE_BODY)).toEqual(SAVE_BODY);
+  });
+
+  it('requires a content id on the save route that names one', () => {
+    expect(() => throughPipes('updateContent', 'contentId', 'not.a.document.id')).toThrow(
+      BadRequestException,
+    );
+    expect(throughPipes('updateContent', 'contentId', 'ff6c4a3a-4d1f-4f0f-9a4b-9d3b2f5a1c77')).toBe(
+      'ff6c4a3a-4d1f-4f0f-9a4b-9d3b2f5a1c77',
+    );
+  });
+
+  it('requires a content id on the parameters route, where there is nothing to create', () => {
+    expect(() => throughPipes('contentParameters', 'contentId', undefined)).toThrow(
+      BadRequestException,
+    );
+    expect(
+      throughPipes('contentParameters', 'contentId', 'ff6c4a3a-4d1f-4f0f-9a4b-9d3b2f5a1c77'),
+    ).toBe('ff6c4a3a-4d1f-4f0f-9a4b-9d3b2f5a1c77');
+  });
+});

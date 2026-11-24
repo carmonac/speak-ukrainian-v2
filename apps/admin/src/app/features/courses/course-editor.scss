@@ -1,0 +1,52 @@
+.alert {
+  margin-bottom: 16px;
+}
+
+.block {
+  margin-bottom: 16px;
+}
+
+.columns {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 0 16px;
+}
+
+.section-title {
+  max-width: 480px;
+  font-weight: 600;
+}
+
+.lesson {
+  padding: 12px;
+  margin-bottom: 12px;
+  border: 1px solid #f0f0f0;
+  border-radius: 8px;
+  background: #fafafa;
+}
+
+.lesson-head {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-bottom: 8px;
+}
+
+.lesson-number {
+  flex: none;
+  width: 28px;
+  text-align: center;
+  color: rgba(0, 0, 0, 0.45);
+  font-variant-numeric: tabular-nums;
+}
+
+.intro {
+  margin-bottom: 8px;
+}
+
+.exercise {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}

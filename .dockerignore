@@ -1,0 +1,23 @@
+node_modules
+**/node_modules
+dist
+**/dist
+.angular
+**/.angular
+.turbo
+**/.turbo
+coverage
+**/coverage
+.git
+.github
+.claude
+backlog
+supabase/.temp
+supabase/.branches
+# A developer's fetched H5P client libraries: the build downloads its own from
+# the pinned commits.
+apps/*/h5p
+*.md
+.env
+.env.*
+!.env.example

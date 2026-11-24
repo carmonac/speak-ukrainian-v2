@@ -1,0 +1,173 @@
+@if (justBought() && course()) {
+  <nz-alert
+    nzType="success"
+    nzShowIcon
+    nzCloseable
+    nzMessage="Thank you! The course is yours. Enjoy your lessons."
+    class="alert"
+  />
+}
+@if (error(); as message) {
+  <nz-alert nzType="error" [nzMessage]="message" nzShowIcon class="alert" />
+  <p><a routerLink="/my-courses">Back to my courses</a></p>
+}
+
+<nz-spin [nzSpinning]="loading()" [nzTip]="confirming() ? 'Your payment is being confirmed…' : ''">
+  @if (!course() && loading()) {
+    <div class="placeholder"></div>
+  }
+
+  @if (course(); as currentCourse) {
+    <div class="page-header">
+      <h1>{{ currentCourse.title }}</h1>
+      <div class="course-progress">
+        <span class="muted">Course progress</span>
+        <nz-progress [nzPercent]="percent()" nzSize="small" />
+      </div>
+    </div>
+
+    <div class="layout">
+      <nav class="outline" aria-label="Course outline">
+        <nz-card [nzBodyStyle]="{ padding: '8px 0' }">
+          @for (section of currentCourse.sections; track section.id) {
+            <h2 class="section">{{ section.title }}</h2>
+            <ul class="lessons">
+              @for (lesson of section.lessons; track lesson.id) {
+                <li>
+                  <a
+                    class="lesson"
+                    [class.active]="lesson.id === current()?.id"
+                    [attr.aria-current]="lesson.id === current()?.id ? 'page' : null"
+                    [routerLink]="['/my-courses', currentCourse.id, 'lessons', lesson.id]"
+                  >
+                    @if (isCompleted(lesson.id)) {
+                      <nz-icon class="done" nzType="check-circle" nzTheme="fill" aria-label="Completed" />
+                    } @else {
+                      <span class="todo" aria-hidden="true"></span>
+                    }
+                    <span class="title">{{ lesson.title }}</span>
+                    @if (scoreOf(lesson.id); as score) {
+                      <span class="score">{{ score }}</span>
+                    }
+                  </a>
+                </li>
+              }
+            </ul>
+          } @empty {
+            <p class="muted empty">This course has no lessons yet.</p>
+          }
+        </nz-card>
+      </nav>
+
+      <section class="main">
+        @if (current(); as lesson) {
+          <nz-card>
+            <div class="lesson-head">
+              <h2 class="lesson-title">{{ lesson.title }}</h2>
+              <button nz-button (click)="openAsk()">
+                <nz-icon nzType="question-circle" />
+                Ask a question
+              </button>
+            </div>
+
+            @if (currentProgress()?.completed) {
+              <p class="status">
+                <nz-icon class="done" nzType="check-circle" nzTheme="fill" />
+                Completed
+                @if (currentProgress(); as p) {
+                  @if (scoreLabel(p); as score) {
+                    · best score {{ score }}
+                  }
+                }
+              </p>
+            }
+
+            @if (lesson.introText) {
+              <p class="intro">{{ lesson.introText }}</p>
+            }
+
+            @if (lesson.h5pContentId; as contentId) {
+              <app-exercise-view [contentId]="contentId" lang="en" (result)="onResult(lesson, $event)" />
+            } @else {
+              @if (!lesson.introText) {
+                <p class="muted">This lesson has no exercise yet.</p>
+              }
+              @if (!currentProgress()?.completed) {
+                <button nz-button nzType="primary" [nzLoading]="marking()" (click)="markComplete(lesson)">
+                  <nz-icon nzType="check" />
+                  Mark as complete
+                </button>
+              }
+            }
+          </nz-card>
+
+          <div class="pager">
+            @if (previous(); as lessonBefore) {
+              <a nz-button [routerLink]="['/my-courses', currentCourse.id, 'lessons', lessonBefore.id]">
+                <nz-icon nzType="arrow-left" />
+                Previous
+              </a>
+            } @else {
+              <span></span>
+            }
+            @if (next(); as lessonAfter) {
+              <a nz-button nzType="primary" [routerLink]="['/my-courses', currentCourse.id, 'lessons', lessonAfter.id]">
+                Next
+                <nz-icon nzType="arrow-right" />
+              </a>
+            } @else {
+              <a nz-button routerLink="/my-courses">Back to my courses</a>
+            }
+          </div>
+
+          <nz-modal
+            [nzVisible]="askOpen()"
+            nzTitle="Ask your teacher"
+            [nzFooter]="asked() ? null : footer"
+            (nzOnCancel)="askOpen.set(false)"
+          >
+            <ng-container *nzModalContent>
+              @if (asked()) {
+                <nz-alert
+                  nzType="success"
+                  nzShowIcon
+                  nzMessage="Your question was sent."
+                  nzDescription="Your teacher will answer in Messages. You will get an email if you miss the reply."
+                />
+                <p class="after-ask">
+                  <a nz-button nzType="primary" routerLink="/messages">Go to messages</a>
+                  <button nz-button (click)="askOpen.set(false)">Keep learning</button>
+                </p>
+              } @else {
+                <p class="muted">About: {{ lesson.title }}</p>
+                <textarea
+                  nz-input
+                  name="question"
+                  [(ngModel)]="question"
+                  cdkTextareaAutosize
+                  [cdkAutosizeMinRows]="4"
+                  [cdkAutosizeMaxRows]="12"
+                  maxlength="5000"
+                  placeholder="What would you like to ask?"
+                  aria-label="Your question"
+                ></textarea>
+              }
+            </ng-container>
+            <ng-template #footer>
+              <button nz-button (click)="askOpen.set(false)">Cancel</button>
+              <button
+                nz-button
+                nzType="primary"
+                [nzLoading]="asking()"
+                [disabled]="!question.trim()"
+                (click)="ask(lesson)"
+              >
+                Send question
+              </button>
+            </ng-template>
+          </nz-modal>
+        }
+      </section>
+    </div>
+  }
+</nz-spin>

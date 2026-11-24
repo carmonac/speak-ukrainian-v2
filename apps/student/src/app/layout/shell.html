@@ -1,0 +1,52 @@
+<header class="header">
+  <div class="bar">
+    <a class="brand" routerLink="/">SpeakUkrainian</a>
+
+    <nav class="nav" aria-label="Main">
+      <a routerLink="/courses" routerLinkActive="active">Courses</a>
+      @if (auth.signedIn()) {
+        <a routerLink="/my-courses" routerLinkActive="active">My courses</a>
+        <a routerLink="/messages" routerLinkActive="active">
+          <nz-badge [nzCount]="session.unread()" nzSize="small" [nzOffset]="[10, -2]">
+            <span class="nav-text">Messages</span>
+          </nz-badge>
+        </a>
+      }
+    </nav>
+
+    <div class="account">
+      @if (auth.signedIn()) {
+        <button nz-button nzType="text" nz-dropdown [nzDropdownMenu]="menu" nzTrigger="click" nzPlacement="bottomRight">
+          <nz-icon nzType="user" />
+          <span class="name">{{ session.displayName() }}</span>
+          <nz-icon nzType="down" />
+        </button>
+        <nz-dropdown-menu #menu="nzDropdownMenu">
+          <ul nz-menu>
+            <li nz-menu-item nzDisabled class="who">{{ auth.email() }}</li>
+            <li nz-menu-divider></li>
+            <li nz-menu-item routerLink="/account">
+              <nz-icon nzType="user" />
+              Account
+            </li>
+            <li nz-menu-item tabindex="0" (click)="signOut()" (keydown.enter)="signOut()">
+              <nz-icon nzType="logout" />
+              Sign out
+            </li>
+          </ul>
+        </nz-dropdown-menu>
+      } @else {
+        <a nz-button nzType="text" routerLink="/login">Sign in</a>
+        <a nz-button nzType="primary" routerLink="/register">Create account</a>
+      }
+    </div>
+  </div>
+</header>
+
+<main class="content">
+  <router-outlet />
+</main>
+
+<footer class="footer">
+  <a [href]="siteUrl">Back to the SpeakUkrainian website</a>
+</footer>

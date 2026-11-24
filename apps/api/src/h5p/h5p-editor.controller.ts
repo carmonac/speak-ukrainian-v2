@@ -1,0 +1,406 @@
+import { rm } from 'node:fs/promises';
+import {
+  Body,
+  Controller,
+  Get,
+  HttpCode,
+  HttpStatus,
+  Logger,
+  Param,
+  Post,
+  Query,
+  Req,
+  Res,
+  UploadedFiles,
+} from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
+import type { IUser } from '@lumieducation/h5p-server';
+import type { Request, Response } from 'express';
+import {
+  h5pContentIdSchema,
+  saveH5pContentSchema,
+  type H5pSaveResult,
+  type SaveH5pContentInput,
+} from '@speakukrainian/shared';
+import { CurrentUser } from '../auth/current-user.decorator.js';
+import type { AuthenticatedUser } from '../auth/authenticated-user.js';
+import { Roles } from '../auth/roles.decorator.js';
+import { ZodValidationPipe } from '../common/zod-validation.pipe.js';
+import type { Env } from '../config/configuration.js';
+import {
+  H5pEditorService,
+  type AjaxUpload,
+  type ContentParametersResult,
+  type EditorModelResponse,
+} from './h5p-editor.service.js';
+import {
+  editorLanguage,
+  editorLibraryVersion,
+  editorMachineName,
+  wildcardPath,
+} from './h5p.request.js';
+import { pipePartialStream, pipeWholeStream, rangeCallbackFor } from './h5p.responses.js';
+import { H5pAjaxUpload } from './h5p.upload.decorator.js';
+import { TEMP_FILES_TOKEN_PATH } from './h5p.url-generator.js';
+import { H5pUrlToken } from './h5p.url-token.decorator.js';
+import { H5P_URL_TOKEN_PARAM } from './h5p.url-token.js';
+import { h5pUserFor, requireCaller } from './h5p.user.js';
+
+/**
+ * A temporary file belongs to one editor, lives about two hours and is
+ * role-guarded, so no shared cache may ever hold one — and a browser holding a
+ * stale copy under a name the next upload can reuse is worse than a second
+ * request.
+ */
+const TEMP_FILE_CACHE_CONTROL = 'private, no-store';
+
+/**
+ * The H5P authoring surface: the content-type and library data the editor's
+ * JavaScript asks for, the files an author uploads from inside it, reading
+ * those files back, and loading an exercise into the widget and saving it
+ * again.
+ *
+ * **Every route here is `@Roles('admin')`, and that is a file boundary rather
+ * than a decorator habit** — the mirror of `h5p-public.controller.ts`, where
+ * every route is `@Public()`. Nothing here may be relaxed: ADR-007 makes the
+ * absence of any public enumeration what lets the play and content-file routes
+ * be public, `POST /ajax?action=files` writes into this server's bucket, and
+ * the two save routes write content and its index document. The guards are
+ * pinned per route by the metadata block at the bottom of
+ * `h5p-editor.controller.spec.ts`.
+ *
+ * **Two credentials, and the file boundary is unchanged by that.** Joubel's own
+ * editor client runs in a srcless iframe and sends no `Authorization` header, so
+ * `GET`/`POST /ajax` and the preview route also accept a signed per-user token
+ * in the URL, marked with `@H5pUrlToken()`. That decorator changes only *how the
+ * caller is identified*; it is not `@Public()`, every route here still carries
+ * `@Roles('admin')`, and a request with neither credential is still refused.
+ *
+ * **Two temporary-file routes, not one.** `temp-files/*path` is the bearer route
+ * and is untouched. `temp/:token/*path` is the one Joubel's client asks for,
+ * because it renders a just-uploaded file as
+ * `<img src="${integration.editor.filesPath}/<filename>">` and `H5P.getPath`
+ * composes `prefix + '/' + path` — so the credential has to be a **path
+ * segment**, and a query string in the prefix would be mangled. `@Public()` was
+ * never the fix: the URL would carry no owner id, and a filename is unique only
+ * within an owner, so an unauthenticated request could not resolve which object
+ * it means. A separate literal first segment rather than `temp-files/:token/*path`
+ * because that pattern and `temp-files/*path` both match
+ * `/temp-files/images/x.png` and only declaration order would decide.
+ *
+ * **Why `@Res()` on `temp-files`.** The same reason `h5p-public.controller.ts`
+ * gives: a status and headers that depend on the request's `Range` cannot be
+ * expressed by returning a value. That docblock has the full account.
+ */
+@ApiTags('h5p')
+@ApiBearerAuth()
+@Controller('h5p')
+export class H5pEditorController {
+  private readonly logger = new Logger(H5pEditorController.name);
+  private readonly stallTimeoutMs: number;
+
+  constructor(
+    private readonly editor: H5pEditorService,
+    config: ConfigService<Env, true>,
+  ) {
+    this.stallTimeoutMs = config.get('H5P_STREAM_STALL_TIMEOUT_MS', { infer: true });
+  }
+
+  /**
+   * `content-type-cache` and `libraries`.
+   *
+   * **Every one of the four query parameters is judged here**, because the
+   * route owns them and the library does not answer for them: an illegal
+   * machine name, a non-numeric version and a malformed language code are all
+   * plain `Error`s out of `LibraryName.validate` and `validateLanguageCode`,
+   * which `toHttpException` correctly declines to map — so each is a 500 for a
+   * query string the caller typed. The versions stay strings, which is what the
+   * endpoint wants; what moves here is the refusal, not the parsing.
+   *
+   * **All four are judged for every action, deliberately.**
+   * `H5PAjaxEndpoint.getAjax` reads `machineName` and the two versions only on
+   * its `libraries` branch, so `?action=content-type-cache&machineName=junk`
+   * is refused here where the endpoint would have ignored it. Validating per
+   * action would copy that branch structure into this controller, and the
+   * structure is the library's to change: the first time it reads one of these
+   * on another branch, a per-action list here is wrong and nothing fails.
+   * Refusing a query parameter the route cannot make sense of costs nothing
+   * real — no H5P client sends that combination — and it cannot rot.
+   */
+  @Get('ajax')
+  @Roles('admin')
+  @H5pUrlToken()
+  async ajaxGet(
+    @Query('action') action?: string,
+    @Query('machineName') machineName?: string,
+    @Query('majorVersion') majorVersion?: string,
+    @Query('minorVersion') minorVersion?: string,
+    @Query('language') language?: string,
+    @CurrentUser() caller?: AuthenticatedUser,
+  ): Promise<unknown> {
+    const user = callerOf(caller);
+
+    return this.editor.getAjax(
+      {
+        action,
+        machineName: editorMachineName(machineName),
+        majorVersion: editorLibraryVersion(majorVersion),
+        minorVersion: editorLibraryVersion(minorVersion),
+        language: editorLanguage(language),
+      },
+      user,
+    );
+  }
+
+  /**
+   * `libraries`, `translations`, `files`, `filter` and `library-upload`.
+   *
+   * The two file parts are handed on as `{ mimetype, name, size, tempFilePath }`
+   * with no `data`, so both `saveContentFile` and `uploadPackage` take their
+   * path branch rather than holding a 100 MB package in memory.
+   *
+   * Multer does not clean up after a *successful* request, so both parts are
+   * removed in a `finally` — caught and logged, never replacing the outcome, for
+   * the same reason `H5pService.importPackage` gives: a save that succeeded must
+   * not answer 500 because a `rm` did not.
+   */
+  @Post('ajax')
+  @Roles('admin')
+  @H5pUrlToken()
+  // Nest answers a POST 201 by default, and four of the five actions here
+  // create nothing at all — they are reads the H5P client happens to send as
+  // POSTs because that is how its own client works. The library's endpoint
+  // documentation says each of them must come back as 200.
+  @HttpCode(HttpStatus.OK)
+  @H5pAjaxUpload()
+  async ajaxPost(
+    @Query('action') action?: string,
+    @Body() body?: unknown,
+    @Query('language') language?: string,
+    @UploadedFiles() files?: Record<string, Express.Multer.File[]>,
+    @CurrentUser() caller?: AuthenticatedUser,
+  ): Promise<unknown> {
+    const user = callerOf(caller);
+    const upload = uploadOf(files, 'file');
+    const packageUpload = uploadOf(files, 'h5p');
+
+    try {
+      return await this.editor.postAjax(
+        { action, body, language: editorLanguage(language), upload, packageUpload },
+        user,
+      );
+    } finally {
+      await this.removeUploads([upload, packageUpload]);
+    }
+  }
+
+  /**
+   * Everything the H5P authoring widget needs to boot, for an existing exercise
+   * (`editor/:contentId`) or for one that does not exist yet (`editor`).
+   *
+   * **The array path is load-bearing.** Express 5 dropped `:contentId?`
+   * (`path-to-regexp` v8), and the obvious replacement — two stacked `@Get`
+   * decorators — silently registers only **one** route: `RequestMapping` writes
+   * `PATH_METADATA` with a single value, so the second decorator overwrites the
+   * first and one of the two paths simply does not exist, with nothing thrown
+   * and nothing logged. `RouterExplorer.extractRouterPath` and
+   * `RoutePathFactory.appendToAllIfDefined` both handle an array, which is the
+   * supported form. `h5p-editor.controller.spec.ts` asserts the metadata,
+   * because that silence is the whole problem.
+   *
+   * **`.optional()` is load-bearing too.** Nest runs a param pipe even when the
+   * parameter is absent, so a bare `h5pContentIdSchema` would turn
+   * `GET /api/h5p/editor` — the create case — into a 400.
+   */
+  @Get(['editor', 'editor/:contentId'])
+  @Roles('admin')
+  async editorModel(
+    @Param('contentId', new ZodValidationPipe(h5pContentIdSchema.optional())) contentId?: string,
+    @Query('language') language?: string,
+    @CurrentUser() caller?: AuthenticatedUser,
+  ): Promise<EditorModelResponse> {
+    return this.editor.editorModel(contentId, editorLanguage(language), callerOf(caller));
+  }
+
+  /**
+   * The stored parameters of one exercise — what the widget edits, and what a
+   * save posts straight back.
+   *
+   * The consumer is the page hosting the widget, not `h5peditor.js`; the
+   * service's docblock has the evidence.
+   */
+  @Get('params/:contentId')
+  @Roles('admin')
+  async contentParameters(
+    @Param('contentId', new ZodValidationPipe(h5pContentIdSchema)) contentId: string,
+    @CurrentUser() caller?: AuthenticatedUser,
+  ): Promise<ContentParametersResult> {
+    return this.editor.contentParameters(contentId, callerOf(caller));
+  }
+
+  /**
+   * Saves an exercise the widget has just created.
+   *
+   * **Why `editor` and not `content`.** `POST /api/h5p/content` already means
+   * "install an uploaded package" and #12 left a comment saying it must keep
+   * meaning that; a second meaning on the same method and path, discriminated
+   * by content type and resolved by controller declaration order, is genuinely
+   * ambiguous. Nothing in the H5P client generates a save URL — `UrlGenerator`
+   * has no save member, and the host page supplies `saveContentCallback` — so
+   * the path is ours to choose. `editor` is the noun because
+   * `GET /api/h5p/editor/:contentId` already means "what the editor screen
+   * needs for this exercise", and this is the same screen's other direction.
+   *
+   * **Two handlers rather than one with an array path.** The rule, so it is not
+   * re-litigated: split when the outcomes differ, share when they do not. These
+   * two differ in what they mean and therefore in their status — 201 for
+   * content that did not exist, matching `POST /api/h5p/content`, the other
+   * route that creates one, and 200 for content that did. One handler could
+   * only pick one code, and 201 for an update is a lie.
+   */
+  @Post('editor')
+  @Roles('admin')
+  async createContent(
+    @Body(new ZodValidationPipe(saveH5pContentSchema)) input: SaveH5pContentInput,
+    @CurrentUser() caller?: AuthenticatedUser,
+  ): Promise<H5pSaveResult> {
+    return this.editor.save(undefined, input, requireCaller(caller));
+  }
+
+  /** Saves an exercise that already exists, keeping its content id. */
+  @Post('editor/:contentId')
+  @Roles('admin')
+  // Nest answers a POST 201 by default. Nothing was created here: the content
+  // id in the path is the one that comes back.
+  @HttpCode(HttpStatus.OK)
+  async updateContent(
+    @Param('contentId', new ZodValidationPipe(h5pContentIdSchema)) contentId: string,
+    @Body(new ZodValidationPipe(saveH5pContentSchema)) input: SaveH5pContentInput,
+    @CurrentUser() caller?: AuthenticatedUser,
+  ): Promise<H5pSaveResult> {
+    return this.editor.save(contentId, input, requireCaller(caller));
+  }
+
+  /**
+   * One file out of the caller's own temporary storage, for a caller holding a
+   * bearer token.
+   *
+   * The owner is the authenticated caller and nothing in the URL, which is what
+   * makes the same filename mean a different object for a different editor.
+   * `temporaryFileByToken` below is the same file for the browser subresource
+   * that cannot send a header.
+   */
+  @Get('temp-files/*path')
+  @Roles('admin')
+  async temporaryFile(
+    @Req() req: Request,
+    @Res() res: Response,
+    @CurrentUser() caller?: AuthenticatedUser,
+  ): Promise<void> {
+    return this.streamTemporaryFile(req, res, caller);
+  }
+
+  /**
+   * The same file, for the `<img>` and `<audio>` previews Joubel's editor
+   * client renders from `integration.editor.filesPath`.
+   *
+   * `:token` is consumed by `H5pUrlTokenGuard`, which is why this handler never
+   * reads it: by the time it runs, `@CurrentUser()` is the editor the token was
+   * minted for, resolved through a live Firebase Auth read, and `@Roles`
+   * has already decided. `wildcardPath(req)` then yields
+   * `images/image-aB34xQz9.png` with nothing to strip, because the token is its
+   * own path parameter. The `#tmp` suffix the client appends is a fragment and
+   * never reaches this server.
+   */
+  @Get(`${TEMP_FILES_TOKEN_PATH}/:${H5P_URL_TOKEN_PARAM}/*path`)
+  @Roles('admin')
+  @H5pUrlToken()
+  async temporaryFileByToken(
+    @Req() req: Request,
+    @Res() res: Response,
+    @CurrentUser() caller?: AuthenticatedUser,
+  ): Promise<void> {
+    return this.streamTemporaryFile(req, res, caller);
+  }
+
+  /**
+   * One streaming path for both temporary-file routes.
+   *
+   * They differ only in how the caller was identified, and a second copy of the
+   * range handling is how the two would come to answer the same bytes with
+   * different headers.
+   */
+  private async streamTemporaryFile(
+    req: Request,
+    res: Response,
+    caller: AuthenticatedUser | undefined,
+  ): Promise<void> {
+    const user = callerOf(caller);
+    const file = await this.editor.temporaryFile(
+      wildcardPath(req),
+      user,
+      rangeCallbackFor(req, res),
+    );
+
+    if (file.range) {
+      pipePartialStream(res, file.stream, {
+        mimetype: file.mimetype,
+        totalLength: file.totalLength,
+        start: file.range.start,
+        end: file.range.end,
+        cacheControl: TEMP_FILE_CACHE_CONTROL,
+        stallTimeoutMs: this.stallTimeoutMs,
+      });
+      return;
+    }
+
+    pipeWholeStream(res, file.stream, {
+      mimetype: file.mimetype,
+      contentLength: file.totalLength,
+      cacheControl: TEMP_FILE_CACHE_CONTROL,
+      stallTimeoutMs: this.stallTimeoutMs,
+    });
+  }
+
+  private async removeUploads(uploads: (AjaxUpload | undefined)[]): Promise<void> {
+    for (const upload of uploads) {
+      if (!upload) {
+        continue;
+      }
+      await rm(upload.tempFilePath, { force: true }).catch((error: unknown) =>
+        this.logger.warn(
+          `Could not remove the ajax upload at ${upload.tempFilePath}: ${error instanceof Error ? error.message : String(error)}`,
+        ),
+      );
+    }
+  }
+}
+
+/**
+ * The H5P `IUser` for the verified caller. The save routes take the caller
+ * itself rather than this, because `save` stamps the audit and builds the
+ * `IUser` for the library, so it needs the uid and not an `IUser`.
+ */
+function callerOf(caller: AuthenticatedUser | undefined): IUser {
+  const { uid, email } = requireCaller(caller);
+  return h5pUserFor(uid, email);
+}
+
+/** The one file multer wrote for a field, in the shape the endpoint asks for. */
+function uploadOf(
+  files: Record<string, Express.Multer.File[]> | undefined,
+  field: string,
+): AjaxUpload | undefined {
+  const found = files?.[field]?.[0];
+  if (!found) {
+    return undefined;
+  }
+
+  return {
+    mimetype: found.mimetype,
+    name: found.originalname,
+    size: found.size,
+    tempFilePath: found.path,
+  };
+}

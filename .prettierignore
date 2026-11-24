@@ -1,0 +1,9 @@
+node_modules
+dist
+.angular
+.turbo
+coverage
+pnpm-lock.yaml
+backlog
+supabase/.temp
+apps/api/h5p

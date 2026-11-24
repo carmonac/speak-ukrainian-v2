@@ -1,0 +1,41 @@
+{
+  "name": "@speakukrainian/admin",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "ng": "ng",
+    "dev": "ng serve --port 4200",
+    "build": "ng build",
+    "typecheck": "tsc -p tsconfig.app.json --noEmit",
+    "lint": "eslint src --max-warnings 0",
+    "test": "echo \"no unit tests yet\""
+  },
+  "dependencies": {
+    "@angular/animations": "^22.1.0",
+    "@angular/cdk": "^22.1.0",
+    "@angular/common": "^22.1.0",
+    "@angular/compiler": "^22.1.0",
+    "@angular/core": "^22.1.0",
+    "@angular/forms": "^22.1.0",
+    "@angular/platform-browser": "^22.1.0",
+    "@angular/router": "^22.1.0",
+    "@ant-design/icons-angular": "^22.0.0",
+    "@lumieducation/h5p-webcomponents": "^10.0.4",
+    "@speakukrainian/shared": "workspace:*",
+    "@supabase/supabase-js": "^2.50.0",
+    "monaco-editor": "^0.52.2",
+    "ng-zorro-antd": "^22.2.0",
+    "rxjs": "~7.8.0",
+    "tslib": "^2.3.0"
+  },
+  "devDependencies": {
+    "@angular/build": "^22.1.2",
+    "@angular/cli": "^22.1.2",
+    "@angular/compiler-cli": "^22.1.0",
+    "@types/node": "^24.10.1",
+    "angular-eslint": "^22.1.0",
+    "eslint": "^10.8.0",
+    "typescript": "~6.0.2",
+    "typescript-eslint": "^8.66.0"
+  }
+}

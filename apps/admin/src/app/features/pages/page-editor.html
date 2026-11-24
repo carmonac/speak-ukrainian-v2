@@ -1,0 +1,187 @@
+<div class="page-header">
+  <h1>{{ heading() }}</h1>
+  <div class="page-actions">
+    @if (publicUrl(); as url) {
+      <a nz-button [href]="url" target="_blank" rel="noopener">View page</a>
+    }
+    <button nz-button (click)="openPreview()" [disabled]="loading()">
+      <nz-icon nzType="eye" />
+      Preview
+    </button>
+    @if (page(); as existing) {
+      @if (!existing.isMain) {
+        <button
+          nz-button
+          nzDanger
+          nz-popconfirm
+          nzPopconfirmTitle="Delete this page?"
+          nzOkText="Delete"
+          (nzOnConfirm)="remove()"
+        >
+          <nz-icon nzType="delete" />
+          Delete
+        </button>
+      }
+    }
+    <button nz-button nzType="primary" (click)="save()" [nzLoading]="saving()" [disabled]="loading()">
+      <nz-icon nzType="save" />
+      Save
+    </button>
+  </div>
+</div>
+
+@if (error(); as message) {
+  <nz-alert nzType="error" [nzMessage]="message" nzShowIcon nzCloseable (nzOnClose)="error.set(null)" class="alert" />
+}
+
+<nz-spin [nzSpinning]="loading()">
+  <form nz-form nzLayout="vertical" (ngSubmit)="save()">
+    <nz-card nzTitle="Page" class="block">
+      <div class="two-columns">
+        <nz-form-item>
+          <nz-form-label nzFor="title" nzRequired>Title</nz-form-label>
+          <nz-form-control>
+            <input nz-input id="title" name="title" [(ngModel)]="form().title" maxlength="200" />
+          </nz-form-control>
+        </nz-form-item>
+        <nz-form-item>
+          <nz-form-label nzFor="path" nzRequired>URL path</nz-form-label>
+          <nz-form-control
+            [nzExtra]="
+              mode() === 'main'
+                ? 'The main page is always served at the site root, whatever its path.'
+                : 'For example /about or /courses/spanish.'
+            "
+          >
+            <input nz-input id="path" name="path" [(ngModel)]="form().path" placeholder="/about" />
+          </nz-form-control>
+        </nz-form-item>
+      </div>
+    </nz-card>
+
+    <nz-card nzTitle="Texts" class="block">
+      <p class="muted">
+        Each text has a name and one translation per language. Use it in the content as
+        <code>{{ '{' + '{ name }' + '}' }}</code>. Visitors see their browser's language; English is used when a
+        translation is missing.
+      </p>
+
+      @for (text of form().texts; track $index; let textIndex = $index) {
+        <div class="text">
+          <div class="text-head">
+            <input
+              nz-input
+              class="text-key"
+              [name]="'key-' + textIndex"
+              [(ngModel)]="text.key"
+              placeholder="Text name, e.g. header"
+              aria-label="Text name"
+            />
+            @if (text.key) {
+              <code class="usage">{{ '{' + '{ ' + text.key + ' }' + '}' }}</code>
+            }
+            <button
+              nz-button
+              nzType="text"
+              nzDanger
+              type="button"
+              (click)="removeText(textIndex)"
+              aria-label="Remove text"
+            >
+              <nz-icon nzType="delete" />
+            </button>
+          </div>
+
+          @for (translation of text.translations; track $index; let translationIndex = $index) {
+            <div class="translation">
+              <nz-select
+                class="locale"
+                [name]="'locale-' + textIndex + '-' + translationIndex"
+                [(ngModel)]="translation.locale"
+                nzShowSearch
+                nzPlaceHolder="Language"
+              >
+                @for (locale of locales; track locale.code) {
+                  <nz-option
+                    [nzValue]="locale.code"
+                    [nzLabel]="locale.code + ' — ' + locale.name"
+                    [nzDisabled]="isTaken(text, translation, locale.code)"
+                  />
+                }
+              </nz-select>
+              <textarea
+                nz-input
+                class="value"
+                [name]="'value-' + textIndex + '-' + translationIndex"
+                [(ngModel)]="translation.value"
+                cdkTextareaAutosize
+                [cdkAutosizeMinRows]="1"
+                [cdkAutosizeMaxRows]="8"
+                placeholder="Translation"
+                aria-label="Translation"
+              ></textarea>
+              <button
+                nz-button
+                nzType="text"
+                type="button"
+                (click)="removeTranslation(text, translationIndex)"
+                [disabled]="text.translations.length === 1"
+                aria-label="Remove translation"
+              >
+                <nz-icon nzType="delete" />
+              </button>
+            </div>
+          }
+
+          <button nz-button nzType="dashed" nzSize="small" type="button" (click)="addTranslation(text)">
+            <nz-icon nzType="plus" />
+            Add more translation
+          </button>
+        </div>
+      } @empty {
+        <p class="muted">This page has no texts yet.</p>
+      }
+
+      <button nz-button type="button" (click)="addText()">
+        <nz-icon nzType="plus" />
+        Add text
+      </button>
+    </nz-card>
+
+    <nz-card nzTitle="Content" class="block">
+      <p class="muted">
+        HTML with Handlebars. Besides your texts you can use <code>{{ '{' + '{ title }' + '}' }}</code>,
+        <code>{{ '{' + '{ locale }' + '}' }}</code>, <code>{{ '{' + '{ studentUrl }' + '}' }}</code> (link to the
+        student classroom), <code>{{ '{' + '{ siteUrl }' + '}' }}</code> and <code>{{ '{' + '{ year }' + '}' }}</code>.
+      </p>
+      <app-code-editor [(value)]="content" language="handlebars" />
+    </nz-card>
+  </form>
+</nz-spin>
+
+<nz-modal
+  [nzVisible]="previewOpen()"
+  nzTitle="Preview"
+  nzWidth="90vw"
+  [nzFooter]="null"
+  [nzBodyStyle]="{ padding: '0' }"
+  (nzOnCancel)="previewOpen.set(false)"
+>
+  <ng-container *nzModalContent>
+    <div class="preview-bar">
+      <span>Language</span>
+      <nz-select
+        class="locale"
+        [ngModel]="previewLocale()"
+        (ngModelChange)="previewLocale.set($event); renderPreview()"
+      >
+        @for (locale of locales; track locale.code) {
+          <nz-option [nzValue]="locale.code" [nzLabel]="locale.code + ' — ' + locale.name" />
+        }
+      </nz-select>
+    </div>
+    <nz-spin [nzSpinning]="previewLoading()">
+      <iframe class="preview" title="Page preview" sandbox="" [srcdoc]="previewHtml()"></iframe>
+    </nz-spin>
+  </ng-container>
+</nz-modal>
