@@ -1,0 +1,10 @@
+# Copy to .dev.vars (untracked). Read by `wrangler dev` only.
+
+# Presence of this value puts the gateway in local mode: requests are proxied
+# to the API running as a Node process, and the bridge is served under
+# /__bridge for that process to call.
+LOCAL_API_ORIGIN=http://localhost:8080
+
+# Shared with the API (BRIDGE_SECRET in the root .env). Any value works
+# locally; it only has to match on both sides.
+BRIDGE_SECRET=local-bridge-secret

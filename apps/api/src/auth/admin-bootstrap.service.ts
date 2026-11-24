@@ -2,8 +2,8 @@ import { randomBytes } from 'node:crypto';
 import { Inject, Injectable, Logger, type OnApplicationBootstrap } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import type { Env } from '../config/configuration.js';
-import { DatabaseService } from '../infra/db/database.service.js';
 import { SUPABASE_ADMIN, type SupabaseAdmin } from '../infra/supabase/supabase.module.js';
+import { roleFromAppMetadata } from './authenticated-user.js';
 
 /**
  * Creates the single administrator the first time the API boots against a
@@ -18,7 +18,6 @@ export class AdminBootstrapService implements OnApplicationBootstrap {
   private readonly logger = new Logger('AdminBootstrap');
 
   constructor(
-    private readonly db: DatabaseService,
     @Inject(SUPABASE_ADMIN) private readonly supabase: SupabaseAdmin,
     private readonly config: ConfigService<Env, true>,
   ) {}
@@ -33,10 +32,16 @@ export class AdminBootstrapService implements OnApplicationBootstrap {
   }
 
   private async ensureAdmin(): Promise<void> {
-    const existing = await this.db.one(
-      `select 1 from auth.users where raw_app_meta_data ->> 'role' = 'admin' limit 1`,
-    );
-    if (existing) {
+    // Asked of Supabase Auth, which still owns the accounts (TASK-43 replaces
+    // this whole service). One page is plenty: the admin is created first.
+    const { data, error: listError } = await this.supabase.auth.admin.listUsers({
+      page: 1,
+      perPage: 1000,
+    });
+    if (listError) {
+      throw new Error(`listing users failed (${listError.message})`);
+    }
+    if (data.users.some((u) => roleFromAppMetadata(u.app_metadata) === 'admin')) {
       return;
     }
 

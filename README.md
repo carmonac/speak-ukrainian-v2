@@ -69,8 +69,16 @@ Students register themselves from the classroom.
 | `pnpm lint` / `pnpm typecheck`      | Static checks                                    |
 | `pnpm format`                       | Prettier                                         |
 | `pnpm db:reset`                     | Recreates the local database from the migrations |
+| `pnpm db:migrate`                   | Applies the D1 migrations to the local database  |
+| `pnpm db:migrate:remote`            | Applies the D1 migrations to the Cloudflare D1   |
 | `pnpm h5p:fetch`                    | Re-downloads the H5P client libraries            |
 | `backlog board` / `backlog browser` | Project progress                                 |
+
+The D1 (SQLite) schema lives in `apps/gateway/migrations/`. `pnpm db:migrate`
+writes to the local database that `wrangler dev` uses
+(`apps/gateway/.wrangler/`); `pnpm db:migrate:remote` needs `wrangler login`.
+The API still runs on the Supabase schema in `supabase/migrations/` until the
+Cloudflare migration (Backlog milestone M5) is finished.
 
 ## Documentation
 

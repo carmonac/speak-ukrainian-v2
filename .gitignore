@@ -37,3 +37,8 @@ apps/*/h5p/.fetch-tmp/
 
 # Per-developer Claude Code permissions
 .claude/settings.local.json
+
+# Wrangler: local state, local secrets and generated runtime types
+.wrangler/
+.dev.vars
+worker-configuration.d.ts

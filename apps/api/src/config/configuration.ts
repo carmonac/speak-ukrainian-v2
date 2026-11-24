@@ -24,8 +24,14 @@ export const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
   PORT: z.coerce.number().int().default(8080),
 
-  /** Direct Postgres connection to the Supabase database. */
-  DATABASE_URL: z.string().min(1),
+  /**
+   * The gateway's bridge to Cloudflare D1 (apps/gateway). In the container the
+   * gateway sets it to `http://gateway.internal`; on a developer machine it is
+   * `wrangler dev`.
+   */
+  BRIDGE_URL: z.url({ protocol: /^https?$/ }).default('http://localhost:8787/__bridge'),
+  /** Shared with the gateway's `.dev.vars`. Only needed outside the container. */
+  BRIDGE_SECRET: optionalSecret,
 
   /** Supabase project URL, e.g. `https://xyz.supabase.co` or `http://127.0.0.1:54321`. */
   SUPABASE_URL: z.url({ protocol: /^https?$/ }),

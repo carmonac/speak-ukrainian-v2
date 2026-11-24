@@ -1,0 +1,51 @@
+/**
+ * The gateway Worker: the public entry point for speakukrainian.org.
+ *
+ * It owns the API container (one Durable Object instance) and the Cloudflare
+ * bindings the API cannot use from inside a container. See src/index.ts.
+ */
+{
+  "$schema": "../../node_modules/wrangler/config-schema.json",
+  "name": "speakukrainian-gateway",
+  "main": "src/index.ts",
+  // `ctx.exports`, used to hand the bridge to the container, needs 2025-11-17
+  // or later.
+  "compatibility_date": "2026-11-01",
+  "workers_dev": false,
+  "routes": [{ "pattern": "speakukrainian.org", "custom_domain": true }],
+  "observability": { "enabled": true },
+
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "speakukrainian",
+      "database_id": "bc4c5342-0efc-498a-b17c-52aa3d77ade0",
+      "migrations_dir": "migrations",
+    },
+  ],
+
+  "containers": [
+    {
+      "class_name": "ApiContainer",
+      "scheduling_policy": "durable_object",
+      "images": {
+        "base": { "dockerfile": "../api/Dockerfile", "build_context": "../.." },
+      },
+    },
+  ],
+  "durable_objects": {
+    "bindings": [{ "name": "API", "class_name": "ApiContainer" }],
+  },
+  "exports": {
+    "ApiContainer": { "type": "durable-object", "storage": "sqlite" },
+  },
+
+  "vars": {
+    "NODE_ENV": "production",
+  },
+
+  // `pnpm dev` runs the API as a plain Node process, so the container is not
+  // built or started locally and Docker is not needed. `.dev.vars` switches the
+  // Worker to local mode (see .dev.vars.example).
+  "dev": { "port": 8787, "enable_containers": false },
+}

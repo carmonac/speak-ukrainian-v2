@@ -14,34 +14,39 @@ interface UserRow {
   full_name: string;
   locale: string;
   notes: string;
-  created_at: Date;
-  last_sign_in_at: Date | null;
-  course_count: string;
-  unread_messages: string;
+  created_at: string;
+  last_sign_in_at: string | null;
+  course_count: number;
+  unread_messages: number;
 }
 
-/** Students only: the administrator is not a row in the panel's user list. */
+/**
+ * Students only: the administrator is not a row in the panel's user list.
+ *
+ * `last_sign_in_at` is always null for now: sign-ins are sessions, and the
+ * session table arrives with better-auth (TASK-43).
+ */
 const USER_SELECT = `
-  select u.id, u.email, u.created_at, u.last_sign_in_at,
+  select u.id, u.email, u."createdAt" as created_at, null as last_sign_in_at,
          coalesce(p.full_name, '') as full_name,
          coalesce(p.locale, 'en') as locale,
          coalesce(p.notes, '') as notes,
-         (select count(*) from public.enrollments e where e.user_id = u.id) as course_count,
-         (select count(*) from public.messages m
+         (select count(*) from enrollments e where e.user_id = u.id) as course_count,
+         (select count(*) from messages m
            where m.student_id = u.id and m.sender = 'student' and m.read_at is null) as unread_messages
-  from auth.users u
-  left join public.profiles p on p.id = u.id
-  where coalesce(u.raw_app_meta_data ->> 'role', '') <> 'admin'`;
+  from "user" u
+  left join profiles p on p.id = u.id
+  where u.role <> 'admin'`;
 
 function toSummary(row: UserRow): UserSummary {
   return {
     id: row.id,
     email: row.email,
     fullName: row.full_name,
-    createdAt: row.created_at.toISOString(),
-    lastSignInAt: row.last_sign_in_at ? row.last_sign_in_at.toISOString() : null,
-    courseCount: Number(row.course_count),
-    unreadMessages: Number(row.unread_messages),
+    createdAt: row.created_at,
+    lastSignInAt: row.last_sign_in_at,
+    courseCount: row.course_count,
+    unreadMessages: row.unread_messages,
   };
 }
 
@@ -50,34 +55,38 @@ export class UsersService {
   constructor(private readonly db: DatabaseService) {}
 
   async list(query: ListUsersQuery): Promise<Page<UserSummary>> {
+    // `like` ignores case for ASCII only: a search for a Cyrillic or accented
+    // name has to match its case. E-mail addresses are unaffected.
     const search = query.search ? `%${query.search.replace(/[%_\\]/g, '\\$&')}%` : null;
-    const filter = search ? `and (u.email ilike $1 or p.full_name ilike $1)` : '';
+    const filter = search
+      ? `and (u.email like ?1 escape '\\' or p.full_name like ?1 escape '\\')`
+      : '';
     const params = search ? [search] : [];
 
     const [rows, total] = await Promise.all([
       this.db.rows<UserRow>(
-        `${USER_SELECT} ${filter} order by u.created_at desc
-         limit $${params.length + 1} offset $${params.length + 2}`,
+        `${USER_SELECT} ${filter} order by u."createdAt" desc
+         limit ?${params.length + 1} offset ?${params.length + 2}`,
         [...params, query.limit, query.offset],
       ),
-      this.db.one<{ count: string }>(
-        `select count(*) from auth.users u left join public.profiles p on p.id = u.id
-         where coalesce(u.raw_app_meta_data ->> 'role', '') <> 'admin' ${filter}`,
+      this.db.one<{ count: number }>(
+        `select count(*) as count from "user" u left join profiles p on p.id = u.id
+         where u.role <> 'admin' ${filter}`,
         params,
       ),
     ]);
-    return { items: rows.map(toSummary), total: Number(total?.count ?? 0) };
+    return { items: rows.map(toSummary), total: total?.count ?? 0 };
   }
 
   async countStudents(): Promise<number> {
-    const row = await this.db.one<{ count: string }>(
-      `select count(*) from auth.users u where coalesce(u.raw_app_meta_data ->> 'role', '') <> 'admin'`,
+    const row = await this.db.one<{ count: number }>(
+      `select count(*) as count from "user" u where u.role <> 'admin'`,
     );
-    return Number(row?.count ?? 0);
+    return row?.count ?? 0;
   }
 
   async findById(id: string): Promise<UserDetail> {
-    const row = await this.db.one<UserRow>(`${USER_SELECT} and u.id = $1`, [id]);
+    const row = await this.db.one<UserRow>(`${USER_SELECT} and u.id = ?1`, [id]);
     if (!row) {
       throw new NotFoundException('That user does not exist.');
     }
@@ -85,21 +94,21 @@ export class UsersService {
     const courses = await this.db.rows<{
       id: string;
       title: string;
-      created_at: Date;
-      lessons: string;
-      completed: string;
+      created_at: string;
+      lessons: number;
+      completed: number;
     }>(
       `select c.id, c.title, e.created_at,
-              (select count(*) from public.lessons l
-                 join public.course_sections s on s.id = l.section_id
+              (select count(*) from lessons l
+                 join course_sections s on s.id = l.section_id
                 where s.course_id = c.id) as lessons,
-              (select count(*) from public.lesson_progress lp
-                 join public.lessons l on l.id = lp.lesson_id
-                 join public.course_sections s on s.id = l.section_id
+              (select count(*) from lesson_progress lp
+                 join lessons l on l.id = lp.lesson_id
+                 join course_sections s on s.id = l.section_id
                 where s.course_id = c.id and lp.user_id = e.user_id and lp.completed_at is not null) as completed
-       from public.enrollments e
-       join public.courses c on c.id = e.course_id
-       where e.user_id = $1
+       from enrollments e
+       join courses c on c.id = e.course_id
+       where e.user_id = ?1
        order by e.created_at desc`,
       [id],
     );
@@ -111,8 +120,8 @@ export class UsersService {
       courses: courses.map((c) => ({
         id: c.id,
         title: c.title,
-        enrolledAt: c.created_at.toISOString(),
-        progressPercent: percent(Number(c.completed), Number(c.lessons)),
+        enrolledAt: c.created_at,
+        progressPercent: percent(c.completed, c.lessons),
       })),
     };
   }
@@ -120,7 +129,7 @@ export class UsersService {
   async update(id: string, input: UpdateUserInput): Promise<UserDetail> {
     await this.findById(id);
     await this.db.query(
-      `insert into public.profiles (id, full_name, locale, notes) values ($1, $2, $3, $4)
+      `insert into profiles (id, full_name, locale, notes) values (?1, ?2, ?3, ?4)
        on conflict (id) do update
          set full_name = excluded.full_name, locale = excluded.locale, notes = excluded.notes`,
       [id, input.fullName, input.locale, input.notes],

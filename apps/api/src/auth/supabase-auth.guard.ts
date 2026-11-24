@@ -16,6 +16,7 @@ import {
 } from './authenticated-user.js';
 import { IS_OPTIONAL_AUTH_KEY } from './optional-auth.decorator.js';
 import { IS_PUBLIC_KEY } from './public.decorator.js';
+import { UserMirrorService } from './user-mirror.service.js';
 
 /** How long a verified token is trusted before Supabase Auth is asked again. */
 const CACHE_TTL_MS = 30_000;
@@ -38,6 +39,7 @@ export class SupabaseAuthGuard implements CanActivate {
   constructor(
     @Inject(SUPABASE_ADMIN) private readonly supabase: SupabaseAdmin,
     private readonly reflector: Reflector,
+    private readonly mirror: UserMirrorService,
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
@@ -95,6 +97,10 @@ export class SupabaseAuthGuard implements CanActivate {
       email: data.user.email,
       role: roleFromAppMetadata(data.user.app_metadata),
     };
+
+    // TEMPORARY (TASK-43): once per cache window, not once per request.
+    const fullName = (data.user.user_metadata as { full_name?: unknown } | null)?.full_name;
+    await this.mirror.sync(user, typeof fullName === 'string' ? fullName : '');
 
     if (this.cache.size >= CACHE_MAX_ENTRIES) {
       this.cache.clear();

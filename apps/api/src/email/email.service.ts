@@ -55,7 +55,7 @@ export class EmailService {
     }
 
     await this.db.query(
-      `insert into public.email_log (to_user, to_email, subject, kind) values ($1, $2, $3, $4)`,
+      `insert into email_log (to_user, to_email, subject, kind) values (?1, ?2, ?3, ?4)`,
       [email.userId ?? null, email.to, email.subject, email.kind],
     );
   }

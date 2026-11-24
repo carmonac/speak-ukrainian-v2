@@ -11,7 +11,7 @@ import Stripe from 'stripe';
 import type { CheckoutResult } from '@speakukrainian/shared';
 import type { AuthenticatedUser } from '../auth/authenticated-user.js';
 import type { Env } from '../config/configuration.js';
-import { DatabaseService } from '../infra/db/database.service.js';
+import { DatabaseService, now } from '../infra/db/database.service.js';
 
 interface CourseForSale {
   id: string;
@@ -54,7 +54,7 @@ export class PaymentsService {
   async checkout(user: AuthenticatedUser, courseId: string): Promise<CheckoutResult> {
     const course = await this.db.one<CourseForSale>(
       `select id, title, slug, summary, price_cents, currency
-       from public.courses where id = $1 and status = 'published'`,
+       from courses where id = ?1 and status = 'published'`,
       [courseId],
     );
     if (!course) {
@@ -62,7 +62,7 @@ export class PaymentsService {
     }
 
     const owned = await this.db.one(
-      'select 1 from public.enrollments where user_id = $1 and course_id = $2',
+      'select 1 from enrollments where user_id = ?1 and course_id = ?2',
       [user.uid, courseId],
     );
     if (owned) {
@@ -107,7 +107,7 @@ export class PaymentsService {
     if (!session.url) {
       throw new ServiceUnavailableException('The payment page could not be created.');
     }
-    await this.db.query('update public.orders set stripe_session_id = $2 where id = $1', [
+    await this.db.query('update orders set stripe_session_id = ?2 where id = ?1', [
       orderId,
       session.id,
     ]);
@@ -143,8 +143,8 @@ export class PaymentsService {
       case 'checkout.session.expired':
       case 'checkout.session.async_payment_failed': {
         await this.db.query(
-          `update public.orders set status = 'cancelled'
-           where stripe_session_id = $1 and status = 'pending'`,
+          `update orders set status = 'cancelled'
+           where stripe_session_id = ?1 and status = 'pending'`,
           [event.data.object.id],
         );
         break;
@@ -156,7 +156,7 @@ export class PaymentsService {
 
   private async fulfilSession(session: Stripe.Checkout.Session): Promise<void> {
     const order = await this.db.one<{ id: string }>(
-      'select id from public.orders where stripe_session_id = $1 or id::text = $2 limit 1',
+      'select id from orders where stripe_session_id = ?1 or id = ?2 limit 1',
       [session.id, session.client_reference_id ?? ''],
     );
     if (!order) {
@@ -172,31 +172,31 @@ export class PaymentsService {
     provider: string,
   ): Promise<string> {
     const row = await this.db.one<{ id: string }>(
-      `insert into public.orders (user_id, course_id, amount_cents, currency, provider)
-       values ($1, $2, $3, $4, $5) returning id`,
+      `insert into orders (user_id, course_id, amount_cents, currency, provider)
+       values (?1, ?2, ?3, ?4, ?5) returning id`,
       [userId, course.id, course.price_cents, course.currency, provider],
     );
     return row!.id;
   }
 
-  /** Marks the order paid and enrolls the student, exactly once. */
+  /**
+   * Marks the order paid and enrolls the student, exactly once and atomically.
+   *
+   * Safe to run again for the same order (Stripe retries deliveries): the
+   * first statement then changes nothing, and the enrollment already exists.
+   */
   private async fulfil(orderId: string): Promise<void> {
-    await this.db.transaction(async (tx) => {
-      const paid = await tx.query<{ user_id: string; course_id: string }>(
-        `update public.orders set status = 'paid', paid_at = now()
-         where id = $1 and status <> 'paid'
-         returning user_id, course_id`,
-        [orderId],
-      );
-      const order = paid.rows[0];
-      if (!order) {
-        return; // Already fulfilled by an earlier delivery.
-      }
-      await tx.query(
-        `insert into public.enrollments (user_id, course_id, order_id) values ($1, $2, $3)
-         on conflict (user_id, course_id) do nothing`,
-        [order.user_id, order.course_id, orderId],
-      );
-    });
+    await this.db.batch([
+      {
+        sql: `update orders set status = 'paid', paid_at = ?2 where id = ?1 and status <> 'paid'`,
+        params: [orderId, now()],
+      },
+      {
+        sql: `insert into enrollments (user_id, course_id, order_id)
+              select user_id, course_id, id from orders where id = ?1 and status = 'paid'
+              on conflict (user_id, course_id) do nothing`,
+        params: [orderId],
+      },
+    ]);
   }
 }

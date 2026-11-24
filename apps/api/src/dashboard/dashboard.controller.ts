@@ -13,26 +13,28 @@ export class DashboardController {
 
   @Get()
   async stats(): Promise<DashboardStats & { unreadMessages: number }> {
+    // Days are `YYYY-MM-DD` text, which compares chronologically.
+    const thirtyDaysAgo = new Date(Date.now() - 30 * 86_400_000).toISOString().slice(0, 10);
     const [counts, sales] = await Promise.all([
       this.db.one<{
-        pages: string;
-        visitors: string;
-        students: string;
-        courses: string;
-        unread: string;
+        pages: number;
+        visitors: number;
+        students: number;
+        courses: number;
+        unread: number;
       }>(
         `select
-           (select count(*) from public.pages) as pages,
-           (select count(*) from public.page_views where day > current_date - 30) as visitors,
-           (select count(*) from auth.users
-             where coalesce(raw_app_meta_data ->> 'role', '') <> 'admin') as students,
-           (select count(*) from public.courses) as courses,
-           (select count(*) from public.messages
+           (select count(*) from pages) as pages,
+           (select count(*) from page_views where day > ?1) as visitors,
+           (select count(*) from "user" where role <> 'admin') as students,
+           (select count(*) from courses) as courses,
+           (select count(*) from messages
              where sender = 'student' and read_at is null) as unread`,
+        [thirtyDaysAgo],
       ),
       this.db.rows<{
         id: string;
-        paid_at: Date;
+        paid_at: string;
         user_id: string;
         email: string;
         full_name: string;
@@ -43,10 +45,10 @@ export class DashboardController {
       }>(
         `select o.id, o.paid_at, o.user_id, u.email, coalesce(p.full_name, '') as full_name,
                 o.course_id, c.title, o.amount_cents, o.currency
-         from public.orders o
-         join auth.users u on u.id = o.user_id
-         left join public.profiles p on p.id = o.user_id
-         join public.courses c on c.id = o.course_id
+         from orders o
+         join "user" u on u.id = o.user_id
+         left join profiles p on p.id = o.user_id
+         join courses c on c.id = o.course_id
          where o.status = 'paid'
          order by o.paid_at desc
          limit 100`,
@@ -54,14 +56,14 @@ export class DashboardController {
     ]);
 
     return {
-      pages: Number(counts?.pages ?? 0),
-      visitors: Number(counts?.visitors ?? 0),
-      students: Number(counts?.students ?? 0),
-      courses: Number(counts?.courses ?? 0),
-      unreadMessages: Number(counts?.unread ?? 0),
+      pages: counts?.pages ?? 0,
+      visitors: counts?.visitors ?? 0,
+      students: counts?.students ?? 0,
+      courses: counts?.courses ?? 0,
+      unreadMessages: counts?.unread ?? 0,
       sales: sales.map((row): Sale => ({
         id: row.id,
-        paidAt: row.paid_at.toISOString(),
+        paidAt: row.paid_at,
         studentId: row.user_id,
         studentEmail: row.email,
         studentName: row.full_name,

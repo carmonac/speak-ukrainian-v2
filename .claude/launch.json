@@ -18,6 +18,18 @@
       "runtimeExecutable": "pnpm",
       "runtimeArgs": ["--filter", "@speakukrainian/student", "dev"],
       "port": 4300
+    },
+    {
+      "name": "gateway",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": ["--filter", "@speakukrainian/gateway", "dev"],
+      "port": 8787
+    },
+    {
+      "name": "gateway-smoke",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": ["--filter", "@speakukrainian/gateway", "smoke"],
+      "port": 8788
     }
   ]
 }

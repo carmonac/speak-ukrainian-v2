@@ -21,3 +21,7 @@ apps/*/h5p
 .env
 .env.*
 !.env.example
+.wrangler
+**/.wrangler
+.dev.vars
+**/.dev.vars

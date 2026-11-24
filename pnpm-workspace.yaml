@@ -12,3 +12,5 @@ allowBuilds:
   esbuild: true
   lmdb: true
   msgpackr-extract: true
+  # Cloudflare's Workers runtime, needed by wrangler (local dev and deploy).
+  workerd: true

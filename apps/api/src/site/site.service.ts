@@ -86,7 +86,7 @@ export class SiteService {
 
     this.db
       .query(
-        `insert into public.page_views (day, visitor_hash, first_path) values ($1, $2, $3)
+        `insert into page_views (day, visitor_hash, first_path) values (?1, ?2, ?3)
          on conflict do nothing`,
         [day, hash, path],
       )

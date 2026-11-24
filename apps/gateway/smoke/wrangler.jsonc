@@ -1,0 +1,43 @@
+/**
+ * Smoke configuration: the real gateway code in container mode, with a tiny
+ * stub server in place of the API image. Run with `pnpm --filter
+ * @speakukrainian/gateway smoke` (needs Docker); it proves proxying, streaming,
+ * env passing and the D1 intercept without depending on the API booting.
+ *
+ * It lives in its own directory so the package's .dev.vars (which selects
+ * local mode) is not picked up. Never deployed.
+ */
+{
+  "$schema": "../../../node_modules/wrangler/config-schema.json",
+  "name": "speakukrainian-gateway-smoke",
+  "main": "../src/index.ts",
+  "compatibility_date": "2026-11-01",
+
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "smoke",
+      "database_id": "00000000-0000-0000-0000-000000000000",
+    },
+  ],
+
+  "containers": [
+    {
+      "class_name": "ApiContainer",
+      "scheduling_policy": "durable_object",
+      "images": { "base": { "dockerfile": "./Dockerfile" } },
+    },
+  ],
+  "durable_objects": {
+    "bindings": [{ "name": "API", "class_name": "ApiContainer" }],
+  },
+  "exports": {
+    "ApiContainer": { "type": "durable-object", "storage": "sqlite" },
+  },
+
+  "vars": {
+    "SMOKE_VAR": "from-wrangler-vars",
+  },
+
+  "dev": { "port": 8788 },
+}

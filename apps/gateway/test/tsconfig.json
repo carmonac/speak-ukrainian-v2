@@ -1,0 +1,14 @@
+{
+  "extends": "../../../tsconfig.base.json",
+  "compilerOptions": {
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "noEmit": true,
+    "declaration": false,
+    "declarationMap": false,
+    "sourceMap": false,
+    // Runs under Node (vitest), unlike src/, which runs in the Workers runtime.
+    "types": ["node"]
+  },
+  "include": ["**/*.ts"]
+}
