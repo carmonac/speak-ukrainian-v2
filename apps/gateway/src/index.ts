@@ -3,16 +3,16 @@
  *
  * Container mode (production): every request for speakukrainian.org is handed
  * to the one ApiContainer instance, which runs the NestJS API — the REST API
- * under /api and the public site. The API reaches D1 through the bridge, which
+ * under /api and the public site. The API reaches D1 and R2 through the bridge, which
  * exists only as an intercepted outbound host of that container.
  *
  * Local mode (`wrangler dev` with LOCAL_API_ORIGIN in .dev.vars): no container.
  * Requests are proxied to the API running as a Node process, and the same
  * bridge is served under /__bridge, guarded by a shared secret, so that
- * process can use the local D1 database.
+ * process can use the local D1 database and R2 bucket.
  */
 import { WorkerEntrypoint } from 'cloudflare:workers';
-import { handleBridge } from './bridge';
+import { handleBridge, type BridgeBindings } from './bridge';
 
 export { ApiContainer } from './api-container';
 
@@ -29,8 +29,12 @@ const API_INSTANCE = 'api';
  */
 export class Bridge extends WorkerEntrypoint<Env> {
   override fetch(request: Request): Promise<Response> {
-    return handleBridge(request, new URL(request.url).pathname, this.env.DB);
+    return handleBridge(request, new URL(request.url).pathname, bindings(this.env));
   }
+}
+
+function bindings(env: Env): BridgeBindings {
+  return { db: env.DB, files: env.FILES };
 }
 
 function timingSafeEqual(a: string, b: string): boolean {
@@ -47,7 +51,7 @@ function localBridge(request: Request, url: URL, env: Env): Promise<Response> | 
   if (!secret || !timingSafeEqual(presented, secret)) {
     return new Response('Forbidden', { status: 403 });
   }
-  return handleBridge(request, url.pathname.slice(LOCAL_BRIDGE_PREFIX.length), env.DB);
+  return handleBridge(request, url.pathname.slice(LOCAL_BRIDGE_PREFIX.length), bindings(env));
 }
 
 /**

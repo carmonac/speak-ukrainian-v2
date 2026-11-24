@@ -1,5 +1,6 @@
 import { Component, inject, signal } from '@angular/core';
 import { Router, RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
+import { NzAlertModule } from 'ng-zorro-antd/alert';
 import { NzBadgeModule } from 'ng-zorro-antd/badge';
 import { NzButtonModule } from 'ng-zorro-antd/button';
 import { NzIconModule } from 'ng-zorro-antd/icon';
@@ -20,6 +21,7 @@ import { NavStore } from '../core/nav.store';
     NzIconModule,
     NzButtonModule,
     NzBadgeModule,
+    NzAlertModule,
   ],
   templateUrl: './shell.html',
   styleUrl: './shell.scss',
@@ -30,6 +32,7 @@ export class Shell {
   protected readonly nav = inject(NavStore);
 
   protected readonly email = this.auth.email;
+  protected readonly usesDefaultPassword = this.auth.usesDefaultPassword;
   protected readonly pagesOpen = signal(this.router.url.startsWith('/pages'));
   protected readonly coursesOpen = signal(this.router.url.startsWith('/courses'));
 

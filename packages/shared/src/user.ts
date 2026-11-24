@@ -36,6 +36,16 @@ export const sendEmailSchema = z.object({
 });
 export type SendEmailInput = z.infer<typeof sendEmailSchema>;
 
+/** The signed-in administrator's own account, for the panel's account section. */
+export interface AdminAccount {
+  email: string;
+  /**
+   * True while the password is still the one the account was created with.
+   * That password is public, so the panel keeps asking for it to be changed.
+   */
+  usesDefaultPassword: boolean;
+}
+
 export interface MyProfile {
   id: string;
   email: string;

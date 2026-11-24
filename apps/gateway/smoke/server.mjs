@@ -78,6 +78,68 @@ const server = createServer(async (req, res) => {
       return send(res, 200, { setup: setup.status, failing, rows: rows.body.results });
     }
 
+    // R2 through the intercepted bridge host: binary bodies in both
+    // directions, a range, and a multipart upload larger than one part.
+    if (url.pathname === '/files') {
+      const base = process.env.BRIDGE_URL;
+      const at = (path, query) => `${base}${path}?${new URLSearchParams(query)}`;
+      const key = 'smoke/файл 1.bin';
+
+      const small = Buffer.from('0123456789');
+      const put = await fetch(at('/r2/object', { key }), { method: 'PUT', body: small });
+      const ranged = await fetch(at('/r2/object', { key }), { headers: { range: 'bytes=2-5' } });
+      const rangeText = await ranged.text();
+
+      const big = 'smoke/big.bin';
+      const partSize = 8 * 1024 * 1024;
+      const created = await (
+        await fetch(at('/r2/multipart', { key: big }), { method: 'POST' })
+      ).json();
+      const parts = [];
+      for (const [index, size] of [partSize, partSize, 1234].entries()) {
+        const response = await fetch(
+          at('/r2/multipart/part', { key: big, uploadId: created.uploadId, partNumber: index + 1 }),
+          { method: 'PUT', body: Buffer.alloc(size, 65 + index) },
+        );
+        parts.push(await response.json());
+      }
+      const completed = await fetch(
+        at('/r2/multipart/complete', { key: big, uploadId: created.uploadId }),
+        {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ parts }),
+        },
+      );
+      const stat = await (await fetch(at('/r2/stat', { key: big }))).json();
+      const tail = await (
+        await fetch(at('/r2/object', { key: big }), {
+          headers: { range: `bytes=${2 * partSize - 2}-${2 * partSize + 1}` },
+        })
+      ).text();
+
+      const listed = await (await fetch(at('/r2/list', { prefix: 'smoke/' }))).json();
+      const removed = await fetch(`${base}/r2/delete`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ keys: listed.objects.map((o) => o.key) }),
+      });
+      const after = await (await fetch(at('/r2/list', { prefix: 'smoke/' }))).json();
+
+      return send(res, 200, {
+        put: put.status,
+        range: {
+          status: ranged.status,
+          text: rangeText,
+          contentRange: ranged.headers.get('content-range'),
+        },
+        multipart: { completed: completed.status, size: stat.size, acrossParts: tail },
+        listed: listed.objects.map((o) => o.key),
+        removed: removed.status,
+        left: after.objects.length,
+      });
+    }
+
     return send(res, 404, { error: 'not found', path: url.pathname });
   } catch (error) {
     return send(res, 500, { error: String(error) });

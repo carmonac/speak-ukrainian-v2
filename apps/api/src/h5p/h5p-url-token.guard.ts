@@ -1,15 +1,15 @@
 import {
   type CanActivate,
   type ExecutionContext,
-  Inject,
   Injectable,
+  Logger,
   ServiceUnavailableException,
   UnauthorizedException,
 } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import type { UserRole } from '@speakukrainian/shared';
-import { roleFromAppMetadata, type RequestWithUser } from '../auth/authenticated-user.js';
-import { SUPABASE_ADMIN, type SupabaseAdmin } from '../infra/supabase/supabase.module.js';
+import { AccountsService } from '../auth/accounts.service.js';
+import type { RequestWithUser } from '../auth/authenticated-user.js';
 import { H5pUrlTokenService } from './h5p-url-token.service.js';
 import { H5P_URL_TOKEN_KEY } from './h5p.url-token.decorator.js';
 import {
@@ -28,7 +28,7 @@ import {
  * its class it returns immediately, which is every route in this API but three.
  *
  * **It runs first among the global guards, and that order is load-bearing:**
- * `FirebaseAuthGuard` would otherwise have already refused a request with no
+ * `SessionAuthGuard` would otherwise have already refused a request with no
  * `Authorization` header, and a route guard cannot rescue one.
  *
  * **Composition.** An *absent* token is not an error — it means the request is
@@ -43,7 +43,7 @@ import {
  * means the same thing wherever it is loaded from rather than depending on
  * whatever credential the surrounding page happens to attach to it.
  *
- * **What it costs, and why that is paid.** One Firebase Auth read per
+ * **What it costs, and why that is paid.** One database read per
  * token-authenticated request, to resolve the caller's *current* role. That is
  * what keeps the token from being a role grant: it carries no role, so a
  * demotion takes effect immediately rather than at the end of the token's
@@ -55,10 +55,12 @@ import {
  */
 @Injectable()
 export class H5pUrlTokenGuard implements CanActivate {
+  private readonly logger = new Logger(H5pUrlTokenGuard.name);
+
   constructor(
     private readonly reflector: Reflector,
     private readonly tokens: H5pUrlTokenService,
-    @Inject(SUPABASE_ADMIN) private readonly supabase: SupabaseAdmin,
+    private readonly accounts: AccountsService,
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
@@ -98,19 +100,17 @@ export class H5pUrlTokenGuard implements CanActivate {
    * immediately rather than when the token expires.
    */
   private async recordOf(uid: string): Promise<{ email: string | undefined; role: UserRole }> {
-    const { data, error } = await this.supabase.auth.admin.getUserById(uid);
-    if (error || !data.user) {
-      if (error && error.status !== 404 && (error.status === undefined || error.status >= 500)) {
-        throw new ServiceUnavailableException('Sign-in is temporarily unavailable.');
-      }
+    let account: Awaited<ReturnType<AccountsService['findById']>>;
+    try {
+      account = await this.accounts.findById(uid);
+    } catch (error) {
+      this.logger.error(`An account could not be read for an H5P URL token: ${String(error)}`);
+      throw new ServiceUnavailableException('Sign-in is temporarily unavailable.');
+    }
+    if (!account || account.banned) {
       throw new UnauthorizedException(H5P_URL_TOKEN_UNKNOWN_USER_MESSAGE);
     }
-
-    const bannedUntil = (data.user as { banned_until?: string | null }).banned_until;
-    if (bannedUntil && new Date(bannedUntil).getTime() > Date.now()) {
-      throw new UnauthorizedException(H5P_URL_TOKEN_UNKNOWN_USER_MESSAGE);
-    }
-    return { email: data.user.email, role: roleFromAppMetadata(data.user.app_metadata) };
+    return { email: account.email, role: account.role };
   }
 }
 

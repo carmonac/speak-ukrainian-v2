@@ -1,9 +1,6 @@
 export interface RuntimeConfig {
   /** Base URL of the NestJS API, including `/api`. */
   apiUrl: string;
-  supabaseUrl: string;
-  /** Publishable (anon) key. Safe in the browser: row level security denies it everything. */
-  supabaseAnonKey: string;
   /** Where the public site is served, for "view page" links. */
   siteUrl: string;
   studentUrl: string;

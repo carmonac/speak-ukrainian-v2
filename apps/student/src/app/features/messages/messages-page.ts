@@ -1,6 +1,6 @@
 import { DatePipe } from '@angular/common';
 import { TextFieldModule } from '@angular/cdk/text-field';
-import { Component, type ElementRef, effect, inject, signal, viewChild } from '@angular/core';
+import { Component, DestroyRef, type ElementRef, inject, signal, viewChild } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { firstValueFrom } from 'rxjs';
 import { NzAlertModule } from 'ng-zorro-antd/alert';
@@ -15,6 +15,9 @@ import { errorMessage } from '../../core/http';
 import { SessionStore } from '../../core/session.store';
 
 /** The student's chat with the teacher, updated live. */
+/** How often the open thread asks the API for new messages. */
+const POLL_INTERVAL_MS = 5_000;
+
 @Component({
   selector: 'app-messages-page',
   imports: [
@@ -144,11 +147,20 @@ export class MessagesPage {
   protected draft = '';
 
   constructor() {
-    // Runs on open, and again each time Realtime reports a change to the
-    // thread (the subscription itself lives in SessionStore, one per session).
-    effect(() => {
-      this.session.messagesChanged();
-      void this.refresh();
+    void this.refresh();
+
+    // While the page is open the thread is re-read every few seconds, and at
+    // once when the tab comes back. A hidden tab does not poll.
+    const poll = (): void => {
+      if (!document.hidden) {
+        void this.refresh();
+      }
+    };
+    const timer = setInterval(poll, POLL_INTERVAL_MS);
+    document.addEventListener('visibilitychange', poll);
+    inject(DestroyRef).onDestroy(() => {
+      clearInterval(timer);
+      document.removeEventListener('visibilitychange', poll);
     });
   }
 

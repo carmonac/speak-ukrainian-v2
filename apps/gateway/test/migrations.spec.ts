@@ -26,6 +26,9 @@ const APPLICATION_TABLES = [
   'profiles',
 ];
 
+/** Owned by better-auth; see apps/api/src/auth/auth.ts. */
+const AUTH_TABLES = ['account', 'session', 'user', 'verification'];
+
 const ISO = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
 const UUID_V4 = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 
@@ -55,11 +58,11 @@ beforeEach(() => {
 });
 
 describe('schema', () => {
-  it('creates the user table and the 14 application tables', () => {
+  it('creates the 14 application tables and the authentication tables', () => {
     const names = all<{ name: string }>(
       "select name from sqlite_master where type = 'table' and name not like 'sqlite_%' order by name",
     ).map((r) => r.name);
-    expect(names).toEqual([...APPLICATION_TABLES, 'user'].sort());
+    expect(names).toEqual([...APPLICATION_TABLES, ...AUTH_TABLES].sort());
   });
 
   it('makes every application table strict', () => {
@@ -143,7 +146,15 @@ describe('constraints', () => {
       insert into h5p_content (id, title, main_library, storage_path, created_by)
         values ('h1', 'T', 'H5P.X 1.0', 'h5p/content/h1', 'u1');
     `);
+    db.exec(`
+      insert into session (id, "expiresAt", token, "createdAt", "updatedAt", "userId")
+        values ('s1', '2099-01-01T00:00:00.000Z', 'tok', '2026-01-01', '2026-01-01', 'u1');
+      insert into account (id, "accountId", "providerId", "userId", "createdAt", "updatedAt")
+        values ('a1', 'u1', 'credential', 'u1', '2026-01-01', '2026-01-01');
+    `);
     db.exec(`delete from "user" where id = 'u1'`);
+    expect(one<{ n: number }>('select count(*) as n from session').n).toBe(0);
+    expect(one<{ n: number }>('select count(*) as n from account').n).toBe(0);
     expect(one<{ n: number }>('select count(*) as n from profiles').n).toBe(0);
     expect(one<{ n: number }>('select count(*) as n from messages').n).toBe(0);
     expect(one('select to_user from email_log')).toEqual({ to_user: null });

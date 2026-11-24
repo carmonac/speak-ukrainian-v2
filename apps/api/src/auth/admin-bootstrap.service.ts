@@ -1,24 +1,26 @@
-import { randomBytes } from 'node:crypto';
 import { Inject, Injectable, Logger, type OnApplicationBootstrap } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import type { Env } from '../config/configuration.js';
-import { SUPABASE_ADMIN, type SupabaseAdmin } from '../infra/supabase/supabase.module.js';
-import { roleFromAppMetadata } from './authenticated-user.js';
+import { AccountsService } from './accounts.service.js';
+import { AUTH, type Auth } from './auth.js';
+
+/**
+ * The password of a freshly created administrator. It is public knowledge, so
+ * it is only ever a starting point: the panel asks for it to be changed.
+ */
+export const DEFAULT_ADMIN_PASSWORD = 'admin123';
 
 /**
  * Creates the single administrator the first time the API boots against a
- * project that has none.
- *
- * The generated password is written to the log exactly once, at creation. It
- * is never stored by this application; the admin can change it afterwards
- * through the password-reset flow.
+ * database that has none. It never touches an existing administrator.
  */
 @Injectable()
 export class AdminBootstrapService implements OnApplicationBootstrap {
   private readonly logger = new Logger('AdminBootstrap');
 
   constructor(
-    @Inject(SUPABASE_ADMIN) private readonly supabase: SupabaseAdmin,
+    @Inject(AUTH) private readonly auth: Auth,
+    private readonly accounts: AccountsService,
     private readonly config: ConfigService<Env, true>,
   ) {}
 
@@ -31,47 +33,28 @@ export class AdminBootstrapService implements OnApplicationBootstrap {
     }
   }
 
-  private async ensureAdmin(): Promise<void> {
-    // Asked of Supabase Auth, which still owns the accounts (TASK-43 replaces
-    // this whole service). One page is plenty: the admin is created first.
-    const { data, error: listError } = await this.supabase.auth.admin.listUsers({
-      page: 1,
-      perPage: 1000,
-    });
-    if (listError) {
-      throw new Error(`listing users failed (${listError.message})`);
-    }
-    if (data.users.some((u) => roleFromAppMetadata(u.app_metadata) === 'admin')) {
+  async ensureAdmin(): Promise<void> {
+    if (await this.accounts.adminExists()) {
       return;
     }
 
     const email = this.config.get('ADMIN_EMAIL', { infer: true });
-    const password = randomBytes(18).toString('base64url');
-
-    const { error } = await this.supabase.auth.admin.createUser({
-      email,
-      password,
-      email_confirm: true,
-      app_metadata: { role: 'admin' },
-      user_metadata: { full_name: 'Administrator' },
-    });
-    if (error) {
+    let created: { user: { id: string } };
+    try {
+      created = await this.auth.api.signUpEmail({
+        body: { email, password: DEFAULT_ADMIN_PASSWORD, name: 'Administrator' },
+      });
+    } catch (error) {
       throw new Error(
-        `creating ${email} failed (${error.message}). If that address already belongs to a ` +
+        `creating ${email} failed (${String(error)}). If that address already belongs to a ` +
           'student account, delete it or choose another ADMIN_EMAIL.',
+        { cause: error },
       );
     }
+    await this.accounts.makeAdmin(created.user.id);
 
     this.logger.warn(
-      [
-        '',
-        '================ ADMIN ACCOUNT CREATED ================',
-        `  email:    ${email}`,
-        `  password: ${password}`,
-        '  This password is shown only once. Store it now.',
-        '=======================================================',
-        '',
-      ].join('\n'),
+      `Administrator ${email} created with the default password. Change it in the panel.`,
     );
   }
 }

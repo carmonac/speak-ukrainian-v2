@@ -6,32 +6,30 @@ import {
 } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { Router } from '@angular/router';
-import { from, switchMap, throwError, type Observable } from 'rxjs';
+import { throwError, type Observable } from 'rxjs';
 import { catchError } from 'rxjs/operators';
 import { AuthService } from './auth.service';
 import { runtimeConfig } from './runtime-config';
 
-/** Adds the Supabase access token to every call made to our own API. */
+/** Adds the session token to every call made to our own API. */
 export const authInterceptor: HttpInterceptorFn = (request, next) => {
   if (!request.url.startsWith(runtimeConfig().apiUrl)) {
     return next(request);
   }
   const auth = inject(AuthService);
   const router = inject(Router);
+  const token = auth.accessToken();
 
-  let tokenSent = false;
-  return from(auth.accessToken()).pipe(
-    switchMap((token) => {
-      tokenSent = token !== null;
-      return next(
-        token ? request.clone({ setHeaders: { Authorization: `Bearer ${token}` } }) : request,
-      );
-    }),
+  return next(
+    token ? request.clone({ setHeaders: { Authorization: `Bearer ${token}` } }) : request,
+  ).pipe(
     catchError((error: unknown) => {
       // Only a rejected token ends the session; a 401 on a request that sent
       // none (a signed-out visitor) is just an error for the caller to show.
-      if (error instanceof HttpErrorResponse && error.status === 401 && tokenSent) {
-        void auth.signOut().then(() => router.navigate(['/login']));
+      if (error instanceof HttpErrorResponse && error.status === 401 && token !== null) {
+        // The session is already gone on the server: forget it here too.
+        auth.clear();
+        void router.navigate(['/login']);
       }
       return throwError(() => error);
     }),

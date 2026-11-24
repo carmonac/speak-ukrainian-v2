@@ -22,12 +22,9 @@ interface UserRow {
 
 /**
  * Students only: the administrator is not a row in the panel's user list.
- *
- * `last_sign_in_at` is always null for now: sign-ins are sessions, and the
- * session table arrives with better-auth (TASK-43).
  */
 const USER_SELECT = `
-  select u.id, u.email, u."createdAt" as created_at, null as last_sign_in_at,
+  select u.id, u.email, u."createdAt" as created_at, u."lastSignInAt" as last_sign_in_at,
          coalesce(p.full_name, '') as full_name,
          coalesce(p.locale, 'en') as locale,
          coalesce(p.notes, '') as notes,

@@ -18,13 +18,15 @@ import { NzCardModule } from 'ng-zorro-antd/card';
 import { NzIconModule } from 'ng-zorro-antd/icon';
 import { NzInputModule } from 'ng-zorro-antd/input';
 import { NzSpinModule } from 'ng-zorro-antd/spin';
-import { MESSAGES_TABLE, type Message, type UserDetail } from '@speakukrainian/shared';
+import type { Message, UserDetail } from '@speakukrainian/shared';
 import { AdminApi } from '../../core/api';
 import { errorMessage } from '../../core/http';
 import { NavStore } from '../../core/nav.store';
-import { Supabase } from '../../core/supabase';
 
-/** The chat between the administrator and one student, updated live. */
+/** How often an open conversation asks the API for new messages. */
+const POLL_INTERVAL_MS = 5_000;
+
+/** The chat between the administrator and one student, kept up to date while it is open. */
 @Component({
   selector: 'app-conversation-page',
   imports: [
@@ -159,7 +161,6 @@ import { Supabase } from '../../core/supabase';
 export class ConversationPage {
   private readonly api = inject(AdminApi);
   private readonly nav = inject(NavStore);
-  private readonly supabase = inject(Supabase).client;
 
   readonly id = input.required<string>();
 
@@ -185,18 +186,21 @@ export class ConversationPage {
       );
       void this.refresh(id);
 
-      // Realtime only says "something changed"; the thread is re-read through
-      // the API, which stays the single source of truth for its shape.
-      const channel = this.supabase
-        .channel(`admin-thread-${id}`)
-        .on(
-          'postgres_changes',
-          { event: '*', schema: 'public', table: MESSAGES_TABLE, filter: `student_id=eq.${id}` },
-          () => void this.refresh(id),
-        )
-        .subscribe();
+      // New messages are picked up by asking again every few seconds, and at
+      // once when the tab comes back. A hidden tab does not poll: nobody is
+      // reading it, and the API should be allowed to go idle.
+      const poll = (): void => {
+        if (!document.hidden) {
+          void this.refresh(id);
+        }
+      };
+      const timer = setInterval(poll, POLL_INTERVAL_MS);
+      document.addEventListener('visibilitychange', poll);
 
-      onCleanup(() => void this.supabase.removeChannel(channel));
+      onCleanup(() => {
+        clearInterval(timer);
+        document.removeEventListener('visibilitychange', poll);
+      });
     });
   }
 

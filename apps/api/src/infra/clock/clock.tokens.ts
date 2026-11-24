@@ -1,4 +1,4 @@
-/** See the note in `../storage/storage.tokens.ts` for why tokens live in their own file. */
+/** In its own file so that naming the token does not import the module that provides it. */
 export const CLOCK = Symbol('CLOCK');
 
 /**

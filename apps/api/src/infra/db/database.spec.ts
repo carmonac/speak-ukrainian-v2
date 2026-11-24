@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ConfigService } from '@nestjs/config';
 import type { Env } from '../../config/configuration.js';
 import { H5pContentRepository } from '../../h5p/h5p-content.repository.js';
+import { BridgeClient } from '../bridge/bridge.client.js';
 import { BridgeDriver } from './bridge.driver.js';
 import { DatabaseError, isForeignKeyViolation, isUniqueViolation } from './database.service.js';
 import { createTestDatabase, type TestDatabase } from './sqlite.test-driver.js';
@@ -57,11 +58,13 @@ describe('DatabaseService', () => {
 describe('BridgeDriver', () => {
   const config = (values: Record<string, string | undefined>) =>
     ({ get: (key: string) => values[key] }) as unknown as ConfigService<Env, true>;
+  const driverFor = (values: Record<string, string | undefined>) =>
+    new BridgeDriver(new BridgeClient(config(values)));
   let calls: { url: string; init: RequestInit }[];
 
   function respondWith(status: number, body: unknown): void {
-    vi.stubGlobal('fetch', async (url: string, init: RequestInit) => {
-      calls.push({ url, init });
+    vi.stubGlobal('fetch', async (url: URL, init: RequestInit) => {
+      calls.push({ url: String(url), init });
       return new Response(JSON.stringify(body), { status });
     });
   }
@@ -73,9 +76,10 @@ describe('BridgeDriver', () => {
 
   it('posts a query with the secret and maps the result', async () => {
     respondWith(200, { results: [{ n: 1 }], meta: { changes: 3 } });
-    const driver = new BridgeDriver(
-      config({ BRIDGE_URL: 'http://localhost:8787/__bridge/', BRIDGE_SECRET: 's3' }),
-    );
+    const driver = driverFor({
+      BRIDGE_URL: 'http://localhost:8787/__bridge/',
+      BRIDGE_SECRET: 's3',
+    });
 
     expect(await driver.query({ sql: 'select ?1', params: ['a', undefined] })).toEqual({
       rows: [{ n: 1 }],
@@ -91,7 +95,7 @@ describe('BridgeDriver', () => {
 
   it('posts a batch, without a secret header when none is configured', async () => {
     respondWith(200, { results: [{ results: [], meta: { changes: 1 } }] });
-    const driver = new BridgeDriver(config({ BRIDGE_URL: 'http://gateway.internal' }));
+    const driver = driverFor({ BRIDGE_URL: 'http://gateway.internal' });
 
     expect(await driver.batch([{ sql: 'delete from a' }])).toEqual([{ rows: [], rowCount: 1 }]);
     expect(calls[0]!.url).toBe('http://gateway.internal/d1/batch');
@@ -108,13 +112,13 @@ describe('BridgeDriver', () => {
         message: 'D1_ERROR: UNIQUE constraint failed: pages.path: SQLITE_CONSTRAINT',
       },
     });
-    const driver = new BridgeDriver(config({ BRIDGE_URL: 'http://gateway.internal' }));
+    const driver = driverFor({ BRIDGE_URL: 'http://gateway.internal' });
     await expect(driver.query({ sql: 'insert' })).rejects.toSatisfy(isUniqueViolation);
   });
 
   it('does not mistake a refused or unreachable bridge for a SQL error', async () => {
     respondWith(403, {});
-    const driver = new BridgeDriver(config({ BRIDGE_URL: 'http://gateway.internal' }));
+    const driver = driverFor({ BRIDGE_URL: 'http://gateway.internal' });
     await expect(driver.query({ sql: 'select 1' })).rejects.not.toBeInstanceOf(DatabaseError);
 
     vi.stubGlobal('fetch', async () => {

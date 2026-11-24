@@ -33,8 +33,8 @@ export class Shell {
   protected readonly siteUrl = runtimeConfig().siteUrl;
 
   constructor() {
-    // The unread badge is refreshed on every navigation as well as by
-    // Realtime, so it recovers if a Realtime event was missed.
+    // The unread badge is refreshed on every navigation as well as by the
+    // timer in SessionStore, so moving around the app shows it at once.
     this.router.events
       .pipe(filter((event) => event instanceof NavigationEnd))
       .subscribe(() => void this.session.refreshUnread());

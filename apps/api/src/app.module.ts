@@ -4,7 +4,7 @@ import { APP_FILTER, APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
 import { ScheduleModule } from '@nestjs/schedule';
 import { AuthModule } from './auth/auth.module.js';
 import { RolesGuard } from './auth/roles.guard.js';
-import { SupabaseAuthGuard } from './auth/supabase-auth.guard.js';
+import { SessionAuthGuard } from './auth/session-auth.guard.js';
 import { CacheControlInterceptor } from './common/cache-control.interceptor.js';
 import { HttpExceptionFilter } from './common/http-exception.filter.js';
 import { envSchema } from './config/configuration.js';
@@ -15,9 +15,9 @@ import { H5pUrlTokenGuard } from './h5p/h5p-url-token.guard.js';
 import { H5pModule } from './h5p/h5p.module.js';
 import { HealthController } from './health/health.controller.js';
 import { ClockModule } from './infra/clock/clock.module.js';
+import { BridgeModule } from './infra/bridge/bridge.module.js';
 import { DatabaseModule } from './infra/db/database.module.js';
 import { StorageModule } from './infra/storage/storage.module.js';
-import { SupabaseModule } from './infra/supabase/supabase.module.js';
 import { MeModule } from './me/me.module.js';
 import { MessagesModule } from './messages/messages.module.js';
 import { PagesModule } from './pages/pages.module.js';
@@ -27,8 +27,8 @@ import { UsersModule } from './users/users.module.js';
 /**
  * Root module.
  *
- * Authentication is global-by-default: every route requires a valid Supabase
- * access token unless it is explicitly marked `@Public()`. Administrator
+ * Authentication is global-by-default: every route requires a valid session
+ * token unless it is explicitly marked `@Public()`. Administrator
  * routes additionally carry `@Roles('admin')`.
  */
 @Module({
@@ -40,8 +40,8 @@ import { UsersModule } from './users/users.module.js';
       validate: (raw) => envSchema.parse(raw),
     }),
     ScheduleModule.forRoot(),
+    BridgeModule,
     DatabaseModule,
-    SupabaseModule,
     ClockModule,
     StorageModule,
     AuthModule,
@@ -64,7 +64,7 @@ import { UsersModule } from './users/users.module.js';
     // guard would refuse them; the roles guard then authorizes whoever was
     // identified, by either means.
     { provide: APP_GUARD, useExisting: H5pUrlTokenGuard },
-    { provide: APP_GUARD, useExisting: SupabaseAuthGuard },
+    { provide: APP_GUARD, useExisting: SessionAuthGuard },
     { provide: APP_GUARD, useClass: RolesGuard },
   ],
 })

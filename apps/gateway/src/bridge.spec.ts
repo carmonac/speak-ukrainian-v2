@@ -38,6 +38,9 @@ function fakeDb(options: { fail?: string } = {}) {
   return { db: db as unknown as D1Database, calls, batches: () => batches };
 }
 
+/** The D1 routes never touch the bucket. */
+const NO_FILES = {} as R2Bucket;
+
 function post(body: unknown): Request {
   return new Request('http://gateway.internal/', {
     method: 'POST',
@@ -51,7 +54,7 @@ describe('handleBridge', () => {
     const response = await handleBridge(
       post({ sql: 'select * from pages where id = ?', params: ['p1'] }),
       '/d1/query',
-      db,
+      { db, files: NO_FILES },
     );
     expect(response.status).toBe(200);
     expect(await response.json()).toEqual({
@@ -63,7 +66,10 @@ describe('handleBridge', () => {
 
   it('binds booleans as integers', async () => {
     const { db, calls } = fakeDb();
-    await handleBridge(post({ sql: 'select ?, ?', params: [true, false] }), '/d1/query', db);
+    await handleBridge(post({ sql: 'select ?, ?', params: [true, false] }), '/d1/query', {
+      db,
+      files: NO_FILES,
+    });
     expect(calls[0]?.params).toEqual([1, 0]);
   });
 
@@ -74,7 +80,7 @@ describe('handleBridge', () => {
         statements: [{ sql: 'delete from a' }, { sql: 'insert into a values (?)', params: [1] }],
       }),
       '/d1/batch',
-      db,
+      { db, files: NO_FILES },
     );
     expect(response.status).toBe(200);
     const body = (await response.json()) as { results: unknown[] };
@@ -85,7 +91,10 @@ describe('handleBridge', () => {
 
   it('reports a SQL failure as 422 with the database message', async () => {
     const { db } = fakeDb({ fail: 'UNIQUE constraint failed: pages.slug' });
-    const response = await handleBridge(post({ sql: 'insert into pages' }), '/d1/query', db);
+    const response = await handleBridge(post({ sql: 'insert into pages' }), '/d1/query', {
+      db,
+      files: NO_FILES,
+    });
     expect(response.status).toBe(422);
     expect(await response.json()).toEqual({
       error: { message: 'UNIQUE constraint failed: pages.slug', kind: 'sql' },
@@ -99,20 +108,25 @@ describe('handleBridge', () => {
     ['an empty batch', { statements: [] }, '/d1/batch'],
   ])('rejects %s with 400 and runs nothing', async (_name, body, path) => {
     const { db, calls } = fakeDb();
-    const response = await handleBridge(post(body), path, db);
+    const response = await handleBridge(post(body), path, { db, files: NO_FILES });
     expect(response.status).toBe(400);
     expect(calls).toEqual([]);
   });
 
   it('rejects a body that is not JSON', async () => {
-    const response = await handleBridge(post('not json'), '/d1/query', fakeDb().db);
+    const response = await handleBridge(post('not json'), '/d1/query', {
+      db: fakeDb().db,
+      files: NO_FILES,
+    });
     expect(response.status).toBe(400);
   });
 
   it('rejects other methods and unknown routes', async () => {
     const { db } = fakeDb();
     const get = new Request('http://gateway.internal/d1/query');
-    expect((await handleBridge(get, '/d1/query', db)).status).toBe(405);
-    expect((await handleBridge(post({ sql: 'select 1' }), '/d1/exec', db)).status).toBe(404);
+    expect((await handleBridge(get, '/d1/query', { db, files: NO_FILES })).status).toBe(404);
+    expect(
+      (await handleBridge(post({ sql: 'select 1' }), '/d1/exec', { db, files: NO_FILES })).status,
+    ).toBe(404);
   });
 });

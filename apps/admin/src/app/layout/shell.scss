@@ -47,3 +47,14 @@
   max-width: 1280px;
   width: 100%;
 }
+
+.account {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: rgba(0, 0, 0, 0.65);
+}
+
+.default-password {
+  margin-bottom: 24px;
+}

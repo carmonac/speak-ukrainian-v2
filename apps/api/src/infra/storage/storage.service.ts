@@ -1,25 +1,15 @@
-import { Inject, Injectable, Logger, type OnApplicationBootstrap } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
+import { Inject, Injectable } from '@nestjs/common';
 import { PassThrough, type Readable } from 'node:stream';
 import {
-  DeleteObjectCommand,
-  DeleteObjectsCommand,
-  GetObjectCommand,
-  HeadObjectCommand,
-  ListObjectsV2Command,
-  PutObjectCommand,
-  type ListObjectsV2CommandOutput,
-  type S3Client,
-} from '@aws-sdk/client-s3';
-import { Upload } from '@aws-sdk/lib-storage';
-import type { Env } from '../../config/configuration.js';
-import { SUPABASE_ADMIN, type SupabaseAdmin } from '../supabase/supabase.module.js';
-import { S3_CLIENT } from './storage.tokens.js';
+  MAX_DELETE_KEYS,
+  OBJECT_STORE,
+  type ObjectInfo,
+  type ObjectMetadata,
+  type ObjectStoreDriver,
+  type UploadedPart,
+} from './object-store.js';
 
-export interface PutOptions {
-  contentType?: string;
-  cacheControl?: string;
-}
+export type PutOptions = ObjectMetadata;
 
 export interface StoredObject {
   path: string;
@@ -33,63 +23,46 @@ export interface StoredObject {
  */
 export const MAX_STORAGE_LIST_RESULTS = 10_000;
 
-/** Objects per API call; S3 caps a page at 1000. */
+/** Objects per listing request; the store caps a page at 1000. */
 const LIST_PAGE_SIZE = 1_000;
 
+/**
+ * How a stream is cut for upload. A stream that fits in one part is stored
+ * with a single request; a longer one becomes a multipart upload of parts
+ * this size.
+ *
+ * It bounds two things at once: what is held in memory per upload, and the
+ * size of any one request to the gateway, which may not exceed 100 MiB when
+ * it leaves a Cloudflare container. The store requires every part but the
+ * last to be equal, and at least 5 MiB.
+ */
+export const UPLOAD_PART_BYTES = 8 * 1024 * 1024;
+
+/**
+ * Files of the application — H5P content, libraries and temporary uploads —
+ * in one private bucket (Cloudflare R2). Nothing here is ever public: every
+ * byte a browser receives is streamed through the API, which decides who may
+ * read it.
+ */
 @Injectable()
-export class StorageService implements OnApplicationBootstrap {
-  private readonly logger = new Logger(StorageService.name);
-  private readonly bucket: string;
-
-  constructor(
-    @Inject(S3_CLIENT) private readonly s3: S3Client,
-    @Inject(SUPABASE_ADMIN) private readonly supabase: SupabaseAdmin,
-    config: ConfigService<Env, true>,
-  ) {
-    this.bucket = config.get('STORAGE_BUCKET', { infer: true });
-  }
-
-  /** Creates the private bucket on first boot, so a fresh project needs no manual step. */
-  async onApplicationBootstrap(): Promise<void> {
-    const { data, error } = await this.supabase.storage.getBucket(this.bucket);
-    if (data) {
-      return;
-    }
-    const created = await this.supabase.storage.createBucket(this.bucket, { public: false });
-    if (created.error && !/already exists/i.test(created.error.message)) {
-      this.logger.error(
-        `Could not create the "${this.bucket}" storage bucket: ${created.error.message}` +
-          (error ? ` (lookup said: ${error.message})` : ''),
-      );
-      return;
-    }
-    this.logger.log(`Created private storage bucket "${this.bucket}"`);
-  }
+export class StorageService {
+  constructor(@Inject(OBJECT_STORE) private readonly store: ObjectStoreDriver) {}
 
   async put(
     path: string,
     body: Buffer | NodeJS.ReadableStream,
     options: PutOptions = {},
   ): Promise<void> {
-    const common = {
-      Bucket: this.bucket,
-      Key: path,
-      ...(options.contentType ? { ContentType: options.contentType } : {}),
-      ...(options.cacheControl ? { CacheControl: options.cacheControl } : {}),
-    };
-
     if (Buffer.isBuffer(body)) {
-      await this.s3.send(new PutObjectCommand({ ...common, Body: body }));
+      await this.store.put(path, body, options);
       return;
     }
-
-    // A stream has no known length, which a plain PutObject requires.
-    await new Upload({ client: this.s3, params: { ...common, Body: body as Readable } }).done();
+    await this.putStream(path, body, options);
   }
 
   async delete(path: string): Promise<void> {
-    // S3 deletes are idempotent: removing an absent key succeeds.
-    await this.s3.send(new DeleteObjectCommand({ Bucket: this.bucket, Key: path }));
+    // Idempotent: removing an absent object succeeds.
+    await this.store.deleteMany([path]);
   }
 
   async exists(path: string): Promise<boolean> {
@@ -98,18 +71,8 @@ export class StorageService implements OnApplicationBootstrap {
 
   /** Size and creation time, or null if the object is absent. */
   async stat(path: string): Promise<{ sizeBytes: number; createdAt: Date } | null> {
-    try {
-      const head = await this.s3.send(new HeadObjectCommand({ Bucket: this.bucket, Key: path }));
-      return {
-        sizeBytes: Number(head.ContentLength ?? 0),
-        createdAt: createdAtOf(head.LastModified),
-      };
-    } catch (error) {
-      if (isNotFound(error)) {
-        return null;
-      }
-      throw error;
-    }
+    const info = await this.store.head(path);
+    return info ? { sizeBytes: info.sizeBytes, createdAt: createdAtOf(info.uploadedAt) } : null;
   }
 
   /**
@@ -121,7 +84,7 @@ export class StorageService implements OnApplicationBootstrap {
     const objects: StoredObject[] = [];
 
     await this.eachPage({ prefix }, (page) => {
-      objects.push(...objectsOf(page));
+      objects.push(...page.objects);
       if (objects.length > limit) {
         throw new Error(`Listing "${prefix}" returned more than ${limit} objects.`);
       }
@@ -139,7 +102,7 @@ export class StorageService implements OnApplicationBootstrap {
     const objects: StoredObject[] = [];
 
     await this.eachPage({ prefix }, (page) => {
-      for (const object of objectsOf(page)) {
+      for (const object of page.objects) {
         if (objects.length >= max) {
           break;
         }
@@ -159,8 +122,8 @@ export class StorageService implements OnApplicationBootstrap {
     const directories = new Set<string>();
 
     await this.eachPage({ prefix, delimiter: '/' }, (page) => {
-      for (const found of page.CommonPrefixes ?? []) {
-        const name = (found.Prefix ?? '').slice(prefix.length).replace(/\/$/, '');
+      for (const found of page.prefixes) {
+        const name = found.slice(prefix.length).replace(/\/$/, '');
         if (name !== '') {
           directories.add(name);
         }
@@ -185,24 +148,19 @@ export class StorageService implements OnApplicationBootstrap {
       throw new Error(`A delete prefix must end in "/", got "${prefix}".`);
     }
 
-    // Collected first: deleting while paging would shift the continuation window.
+    // Collected first: deleting while paging would shift the listing window.
     const keys: string[] = [];
     await this.eachPage({ prefix }, (page) => {
-      keys.push(...objectsOf(page).map((object) => object.path));
+      keys.push(...page.objects.map((object) => object.path));
     });
 
-    for (let i = 0; i < keys.length; i += LIST_PAGE_SIZE) {
-      const batch = keys.slice(i, i + LIST_PAGE_SIZE);
-      const result = await this.s3.send(
-        new DeleteObjectsCommand({
-          Bucket: this.bucket,
-          Delete: { Objects: batch.map((Key) => ({ Key })), Quiet: true },
-        }),
-      );
-      const failed = result.Errors ?? [];
-      if (failed.length > 0) {
+    for (let i = 0; i < keys.length; i += MAX_DELETE_KEYS) {
+      try {
+        await this.store.deleteMany(keys.slice(i, i + MAX_DELETE_KEYS));
+      } catch (error) {
         throw new Error(
-          `Could not delete ${failed.length} object(s) under "${prefix}": ${failed[0]?.Message ?? 'unknown error'}`,
+          `Could not delete the objects under "${prefix}": ${error instanceof Error ? error.message : String(error)}`,
+          { cause: error },
         );
       }
     }
@@ -212,27 +170,17 @@ export class StorageService implements OnApplicationBootstrap {
    * A readable for one object, optionally a byte range (both ends inclusive).
    *
    * Returned synchronously because H5P's storage interfaces expect a stream,
-   * not a promise of one; a failed request surfaces as an `error` on it.
+   * not a promise of one; a failed request, or a missing object, surfaces as
+   * an `error` on it.
    */
   createReadStream(path: string, range?: { start?: number; end?: number }): Readable {
     const out = new PassThrough();
-    const rangeHeader =
-      range && (range.start !== undefined || range.end !== undefined)
-        ? `bytes=${range.start ?? 0}-${range.end ?? ''}`
-        : undefined;
 
-    this.s3
-      .send(
-        new GetObjectCommand({
-          Bucket: this.bucket,
-          Key: path,
-          ...(rangeHeader ? { Range: rangeHeader } : {}),
-        }),
-      )
-      .then((response) => {
-        const body = response.Body as Readable | undefined;
+    this.store
+      .get(path, range)
+      .then((body) => {
         if (!body) {
-          out.end();
+          out.destroy(new Error(`No object at "${path}".`));
           return;
         }
         body.on('error', (error) => out.destroy(error));
@@ -246,38 +194,117 @@ export class StorageService implements OnApplicationBootstrap {
     return out;
   }
 
+  /**
+   * Stores a stream of unknown length without ever holding more than one part
+   * of it. See `UPLOAD_PART_BYTES`.
+   */
+  private async putStream(
+    path: string,
+    body: NodeJS.ReadableStream,
+    options: PutOptions,
+  ): Promise<void> {
+    let uploadId: string | undefined;
+    const parts: UploadedPart[] = [];
+
+    try {
+      for await (const { part, last } of partsOf(body, UPLOAD_PART_BYTES)) {
+        if (last && uploadId === undefined) {
+          // The whole stream fitted in one part.
+          await this.store.put(path, part, options);
+          return;
+        }
+        uploadId ??= await this.store.createMultipart(path, options);
+        parts.push(await this.store.uploadPart(path, uploadId, parts.length + 1, part));
+      }
+      if (uploadId !== undefined) {
+        await this.store.completeMultipart(path, uploadId, parts);
+      }
+    } catch (error) {
+      if (uploadId !== undefined) {
+        // Uploaded parts are billed until the upload is completed or aborted.
+        await this.store.abortMultipart(path, uploadId).catch(() => undefined);
+      }
+      throw error;
+    }
+  }
+
   private async eachPage(
     query: { prefix: string; delimiter?: string },
-    onPage: (page: ListObjectsV2CommandOutput) => boolean | void | Promise<boolean | void>,
+    onPage: (page: {
+      objects: StoredObject[];
+      prefixes: string[];
+    }) => boolean | void | Promise<boolean | void>,
   ): Promise<void> {
-    let token: string | undefined;
+    let cursor: string | undefined;
 
     do {
-      const page: ListObjectsV2CommandOutput = await this.s3.send(
-        new ListObjectsV2Command({
-          Bucket: this.bucket,
-          Prefix: query.prefix,
-          MaxKeys: LIST_PAGE_SIZE,
-          ...(query.delimiter ? { Delimiter: query.delimiter } : {}),
-          ...(token ? { ContinuationToken: token } : {}),
-        }),
-      );
+      const page = await this.store.list({
+        prefix: query.prefix,
+        limit: LIST_PAGE_SIZE,
+        ...(query.delimiter ? { delimiter: query.delimiter } : {}),
+        ...(cursor ? { cursor } : {}),
+      });
       // A callback that returns `false` has seen enough.
-      if ((await onPage(page)) === false) {
+      const more = await onPage({ objects: objectsOf(page.objects), prefixes: page.prefixes });
+      if (more === false) {
         return;
       }
-      token = page.IsTruncated ? page.NextContinuationToken : undefined;
-    } while (token);
+      cursor = page.cursor;
+    } while (cursor);
   }
 }
 
-function objectsOf(page: ListObjectsV2CommandOutput): StoredObject[] {
-  return (page.Contents ?? [])
-    .filter((object) => typeof object.Key === 'string' && !object.Key.endsWith('/'))
+/**
+ * Cuts a stream into buffers of exactly `size` bytes, the last one being
+ * whatever is left (and flagged). An empty stream yields one empty, last part,
+ * so an empty file is still stored.
+ */
+async function* partsOf(
+  stream: NodeJS.ReadableStream,
+  size: number,
+): AsyncGenerator<{ part: Buffer; last: boolean }> {
+  let pending: Buffer[] = [];
+  let pendingBytes = 0;
+  // One full part is held back until more data (or the end) is seen, so the
+  // final part can be marked as such.
+  let ready: Buffer | undefined;
+
+  for await (const chunk of stream) {
+    let data = typeof chunk === 'string' ? Buffer.from(chunk) : (chunk as Buffer);
+    while (data.length > 0) {
+      const take = Math.min(size - pendingBytes, data.length);
+      pending.push(data.subarray(0, take));
+      pendingBytes += take;
+      data = data.subarray(take);
+
+      if (pendingBytes === size) {
+        if (ready) {
+          yield { part: ready, last: false };
+        }
+        ready = Buffer.concat(pending, size);
+        pending = [];
+        pendingBytes = 0;
+      }
+    }
+  }
+
+  if (pendingBytes > 0) {
+    if (ready) {
+      yield { part: ready, last: false };
+    }
+    yield { part: Buffer.concat(pending, pendingBytes), last: true };
+  } else {
+    yield { part: ready ?? Buffer.alloc(0), last: true };
+  }
+}
+
+function objectsOf(objects: ObjectInfo[]): StoredObject[] {
+  return objects
+    .filter((object) => !object.key.endsWith('/'))
     .map((object) => ({
-      path: object.Key as string,
-      sizeBytes: Number(object.Size ?? 0),
-      createdAt: createdAtOf(object.LastModified),
+      path: object.key,
+      sizeBytes: object.sizeBytes,
+      createdAt: createdAtOf(object.uploadedAt),
     }));
 }
 
@@ -287,9 +314,4 @@ function objectsOf(page: ListObjectsV2CommandOutput): StoredObject[] {
  */
 function createdAtOf(value: Date | undefined): Date {
   return value && Number.isFinite(value.getTime()) ? value : new Date(0);
-}
-
-function isNotFound(error: unknown): boolean {
-  const e = error as { name?: string; $metadata?: { httpStatusCode?: number } } | null;
-  return e?.name === 'NotFound' || e?.name === 'NoSuchKey' || e?.$metadata?.httpStatusCode === 404;
 }

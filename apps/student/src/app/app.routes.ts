@@ -31,7 +31,7 @@ export const routes: Routes = [
           import('./features/auth/forgot-password-page').then((m) => m.ForgotPasswordPage),
       },
       {
-        // Reached from the link in the reset email, which signs the student in.
+        // Reached from the link in the reset email: `/reset-password?token=…`.
         path: 'reset-password',
         loadComponent: () =>
           import('./features/auth/reset-password-page').then((m) => m.ResetPasswordPage),

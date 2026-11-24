@@ -57,9 +57,13 @@ describe('UsersService and the dashboard', () => {
   });
 
   it('lists students, newest first, without the administrator', async () => {
+    t.all(
+      `update "user" set "lastSignInAt" = '2026-03-01T08:00:00.000Z' where id = 'cy' returning id`,
+    );
     const page = await users.list({ limit: 20, offset: 0 });
     expect(page.total).toBe(3);
     expect(page.items.map((u) => u.id)).toEqual(['cy', 'bo', 'ana']);
+    expect(page.items[0]!.lastSignInAt).toBe('2026-03-01T08:00:00.000Z');
     expect(page.items[2]).toEqual({
       id: 'ana',
       email: 'ana@example.com',

@@ -11,8 +11,7 @@ export interface RequestWithUser extends Request {
   user?: AuthenticatedUser;
 }
 
-/** The role lives in `app_metadata`, which only the service role can write. */
-export function roleFromAppMetadata(appMetadata: unknown): UserRole {
-  const role = (appMetadata as { role?: unknown } | null | undefined)?.role;
+/** Anything that is not exactly `admin` is a student. */
+export function toRole(role: unknown): UserRole {
   return role === 'admin' ? 'admin' : 'student';
 }

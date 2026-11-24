@@ -24,6 +24,10 @@
     },
   ],
 
+  // H5P content, libraries and temporary uploads. Private: no public bucket
+  // URL, no custom domain; files are only ever served by the API.
+  "r2_buckets": [{ "binding": "FILES", "bucket_name": "speakukrainian-h5p" }],
+
   "containers": [
     {
       "class_name": "ApiContainer",

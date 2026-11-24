@@ -3,7 +3,9 @@ import { Logger } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import type { NestExpressApplication } from '@nestjs/platform-express';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
+import { toNodeHandler } from 'better-auth/node';
 import { AppModule } from './app.module.js';
+import { AUTH, AUTH_BASE_PATH, type Auth } from './auth/auth.js';
 import { useJsonBodyParser } from './common/body-parser.js';
 import { securityHeaders } from './common/security-headers.js';
 import type { Env } from './config/configuration.js';
@@ -28,7 +30,17 @@ async function bootstrap(): Promise<void> {
   app.enableShutdownHooks();
 
   app.use(securityHeaders());
-  app.enableCors({ origin: config.get('CORS_ORIGINS', { infer: true }), credentials: true });
+  app.enableCors({
+    origin: config.get('CORS_ORIGINS', { infer: true }),
+    credentials: true,
+    // The session token of a sign-in or sign-up; the apps read it from here.
+    exposedHeaders: ['set-auth-token'],
+  });
+
+  // Sign-up, sign-in, sign-out, password reset: better-auth's own routes. They
+  // read the request body themselves, so they are mounted ahead of the body
+  // parsers, and after CORS so the apps on other origins can call them.
+  app.use(AUTH_BASE_PATH, toNodeHandler(app.get<Auth>(AUTH)));
 
   // After CORS, so a 413 still carries the CORS headers the browser needs to
   // show the real status.

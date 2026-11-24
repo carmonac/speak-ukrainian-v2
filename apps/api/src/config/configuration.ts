@@ -25,7 +25,7 @@ export const envSchema = z.object({
   PORT: z.coerce.number().int().default(8080),
 
   /**
-   * The gateway's bridge to Cloudflare D1 (apps/gateway). In the container the
+   * The gateway's bridge to Cloudflare D1 and R2 (apps/gateway). In the container the
    * gateway sets it to `http://gateway.internal`; on a developer machine it is
    * `wrangler dev`.
    */
@@ -33,20 +33,8 @@ export const envSchema = z.object({
   /** Shared with the gateway's `.dev.vars`. Only needed outside the container. */
   BRIDGE_SECRET: optionalSecret,
 
-  /** Supabase project URL, e.g. `https://xyz.supabase.co` or `http://127.0.0.1:54321`. */
-  SUPABASE_URL: z.url({ protocol: /^https?$/ }),
-
-  /** Service-role (secret) key. Server only: it bypasses row level security. */
-  SUPABASE_SERVICE_ROLE_KEY: z.string().min(1),
-
-  /** Private bucket holding H5P content, libraries and temporary files. */
-  STORAGE_BUCKET: z.string().min(1).default('h5p'),
-
-  /** S3-compatible endpoint of Supabase Storage. Defaults to `<SUPABASE_URL>/storage/v1/s3`. */
-  STORAGE_S3_ENDPOINT: optionalSecret,
-  STORAGE_S3_REGION: z.string().default('local'),
-  STORAGE_S3_ACCESS_KEY_ID: z.string().min(1),
-  STORAGE_S3_SECRET_ACCESS_KEY: z.string().min(1),
+  /** Signs session tokens. Required, no default on purpose: `openssl rand -base64 48`. */
+  AUTH_SECRET: z.string().min(32),
 
   /** Origins allowed to call the API: the admin panel and the student classroom. */
   CORS_ORIGINS: csv('http://localhost:4200,http://localhost:4300'),
@@ -59,7 +47,7 @@ export const envSchema = z.object({
 
   /**
    * Email of the single administrator. On the first boot with no admin in the
-   * project, the API creates this account with a random password and logs it once.
+   * database, the API creates this account with the default password.
    */
   ADMIN_EMAIL: z.email(),
 

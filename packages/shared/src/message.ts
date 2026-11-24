@@ -31,6 +31,3 @@ export interface ConversationSummary {
   lastSender: MessageSender;
   unread: number;
 }
-
-/** Name of the Postgres table both apps subscribe to through Supabase Realtime. */
-export const MESSAGES_TABLE = 'messages';

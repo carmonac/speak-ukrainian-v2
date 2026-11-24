@@ -74,7 +74,10 @@ export class AccountPage {
   private readonly message = inject(NzMessageService);
   protected readonly auth = inject(AuthService);
 
-  protected fullName = '';
+  // A signal, not a plain field: the profile can arrive after the first
+  // render (on a page reload), and without zones only a signal tells the
+  // template to show it.
+  protected readonly fullName = signal('');
   protected readonly saving = signal(false);
   protected readonly error = signal<string | null>(null);
   private loaded = false;
@@ -85,7 +88,7 @@ export class AccountPage {
       const profile = this.session.profile();
       if (profile && !this.loaded) {
         this.loaded = true;
-        this.fullName = profile.fullName;
+        this.fullName.set(profile.fullName);
       }
     });
     void this.session.refreshProfile();
@@ -98,9 +101,9 @@ export class AccountPage {
     this.saving.set(true);
     this.error.set(null);
     try {
-      const profile = await firstValueFrom(this.api.updateProfile(this.fullName.trim()));
+      const profile = await firstValueFrom(this.api.updateProfile(this.fullName().trim()));
       this.session.profile.set(profile);
-      this.fullName = profile.fullName;
+      this.fullName.set(profile.fullName);
       this.message.success('Account saved');
     } catch (error) {
       this.error.set(errorMessage(error, 'Your account could not be saved.'));

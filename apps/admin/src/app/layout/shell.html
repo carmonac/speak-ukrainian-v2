@@ -59,13 +59,29 @@
 
   <nz-layout>
     <nz-header class="header">
-      <span class="muted">{{ email() }}</span>
+      <a class="account" routerLink="/account" title="Account and password">
+        <nz-icon nzType="user" />
+        {{ email() }}
+      </a>
       <button nz-button nzType="text" (click)="signOut()">
         <nz-icon nzType="logout" />
         Sign out
       </button>
     </nz-header>
     <nz-content class="content">
+      @if (usesDefaultPassword()) {
+        <nz-alert
+          class="default-password"
+          nzType="warning"
+          nzShowIcon
+          nzMessage="This account still uses the default password"
+          [nzDescription]="defaultPasswordHelp"
+        />
+        <ng-template #defaultPasswordHelp>
+          Anyone who knows it can sign in to this panel.
+          <a routerLink="/account">Change the password now</a>.
+        </ng-template>
+      }
       <router-outlet />
     </nz-content>
   </nz-layout>

@@ -1,6 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
-import type { Env } from '../../config/configuration.js';
+import { BridgeClient } from '../bridge/bridge.client.js';
 import {
   DatabaseError,
   type SqlDriver,
@@ -14,32 +13,10 @@ interface BridgeResult {
   meta: { changes: number };
 }
 
-interface BridgeError {
-  error?: { message?: string; kind?: string };
-}
-
-const TIMEOUT_MS = 30_000;
-
-/**
- * Cloudflare D1 through the gateway's bridge (apps/gateway/src/bridge.ts).
- *
- * D1 is only usable from inside a Worker, and the API runs in a container, so
- * every statement is one HTTP request to the gateway: to `gateway.internal`
- * in the container, to `wrangler dev` on a developer machine.
- */
+/** Cloudflare D1 through the gateway's bridge: every statement is one request. */
 @Injectable()
 export class BridgeDriver implements SqlDriver {
-  private readonly baseUrl: string;
-  private readonly headers: Record<string, string>;
-
-  constructor(config: ConfigService<Env, true>) {
-    this.baseUrl = config.get('BRIDGE_URL', { infer: true }).replace(/\/$/, '');
-    const secret = config.get('BRIDGE_SECRET', { infer: true });
-    this.headers = {
-      'content-type': 'application/json',
-      ...(secret ? { 'x-bridge-secret': secret } : {}),
-    };
-  }
+  constructor(private readonly bridge: BridgeClient) {}
 
   async query(statement: SqlStatement): Promise<SqlResult> {
     return toResult(await this.post<BridgeResult>('/d1/query', wire(statement)));
@@ -53,30 +30,17 @@ export class BridgeDriver implements SqlDriver {
   }
 
   private async post<T>(path: string, body: unknown): Promise<T> {
-    let response: Response;
-    try {
-      response = await fetch(`${this.baseUrl}${path}`, {
-        method: 'POST',
-        headers: this.headers,
-        body: JSON.stringify(body),
-        signal: AbortSignal.timeout(TIMEOUT_MS),
-      });
-    } catch (error) {
-      throw new Error(`The database bridge at ${this.baseUrl} could not be reached`, {
-        cause: error,
-      });
-    }
-
+    const response = await this.bridge.send({ method: 'POST', path, body: JSON.stringify(body) });
     if (response.ok) {
       return (await response.json()) as T;
     }
-
-    const failure = (await response.json().catch(() => ({}))) as BridgeError;
-    const message = failure.error?.message ?? `HTTP ${response.status}`;
-    if (failure.error?.kind === 'sql') {
-      throw new DatabaseError(message);
+    const failure = await this.bridge.failureOf(response);
+    if (failure.kind === 'sql') {
+      throw new DatabaseError(failure.message);
     }
-    throw new Error(`The database bridge refused the request (${response.status}): ${message}`);
+    throw new Error(
+      `The database bridge refused the request (${response.status}): ${failure.message}`,
+    );
   }
 }
 

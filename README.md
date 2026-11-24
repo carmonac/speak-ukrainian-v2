@@ -77,8 +77,10 @@ Students register themselves from the classroom.
 The D1 (SQLite) schema lives in `apps/gateway/migrations/`. `pnpm db:migrate`
 writes to the local database that `wrangler dev` uses
 (`apps/gateway/.wrangler/`); `pnpm db:migrate:remote` needs `wrangler login`.
-The API still runs on the Supabase schema in `supabase/migrations/` until the
-Cloudflare migration (Backlog milestone M5) is finished.
+Files (H5P content and libraries) are stored in Cloudflare R2. Locally the
+gateway simulates the bucket on disk (`apps/gateway/.wrangler/`), so no account,
+credentials or internet connection are needed; the API reaches both the database
+and the bucket through the gateway, which is why `pnpm dev` starts it too.
 
 ## Documentation
 

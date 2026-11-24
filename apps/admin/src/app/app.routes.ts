@@ -8,6 +8,12 @@ export const routes: Routes = [
     loadComponent: () => import('./features/login/login-page').then((m) => m.LoginPage),
   },
   {
+    // Reached from a password-reset e-mail, signed in or not.
+    path: 'reset-password',
+    loadComponent: () =>
+      import('./features/login/reset-password-page').then((m) => m.ResetPasswordPage),
+  },
+  {
     path: '',
     canActivate: [adminGuard],
     loadComponent: () => import('./layout/shell').then((m) => m.Shell),
@@ -47,6 +53,10 @@ export const routes: Routes = [
         path: 'courses/:courseId/lessons/:lessonId/exercise',
         loadComponent: () =>
           import('./features/courses/exercise-editor').then((m) => m.ExerciseEditor),
+      },
+      {
+        path: 'account',
+        loadComponent: () => import('./features/account/account-page').then((m) => m.AccountPage),
       },
       {
         path: 'users',

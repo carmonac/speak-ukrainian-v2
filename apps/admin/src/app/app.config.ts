@@ -17,6 +17,7 @@ import {
   EyeOutline,
   FileTextOutline,
   HomeOutline,
+  LockOutline,
   LogoutOutline,
   MailOutline,
   MessageOutline,
@@ -25,6 +26,7 @@ import {
   SendOutline,
   TeamOutline,
   UploadOutline,
+  UserOutline,
 } from '@ant-design/icons-angular/icons';
 import { en_US, provideNzI18n } from 'ng-zorro-antd/i18n';
 import { provideNzIcons } from 'ng-zorro-antd/icon';
@@ -54,6 +56,7 @@ export const appConfig: ApplicationConfig = {
       EyeOutline,
       FileTextOutline,
       HomeOutline,
+      LockOutline,
       LogoutOutline,
       MailOutline,
       MessageOutline,
@@ -62,6 +65,7 @@ export const appConfig: ApplicationConfig = {
       SendOutline,
       TeamOutline,
       UploadOutline,
+      UserOutline,
     ]),
   ],
 };

@@ -6,26 +6,29 @@ import {
 } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { Router } from '@angular/router';
-import { from, switchMap, throwError, type Observable } from 'rxjs';
+import { throwError, type Observable } from 'rxjs';
 import { catchError } from 'rxjs/operators';
 import { AuthService } from './auth.service';
 import { runtimeConfig } from './runtime-config';
 
-/** Adds the Supabase access token to every call made to our own API. */
+/** Adds the session token to every call made to our own API. */
 export const authInterceptor: HttpInterceptorFn = (request, next) => {
   if (!request.url.startsWith(runtimeConfig().apiUrl)) {
     return next(request);
   }
   const auth = inject(AuthService);
   const router = inject(Router);
+  const token = auth.accessToken();
 
-  return from(auth.accessToken()).pipe(
-    switchMap((token) =>
-      next(token ? request.clone({ setHeaders: { Authorization: `Bearer ${token}` } }) : request),
-    ),
+  return next(
+    token ? request.clone({ setHeaders: { Authorization: `Bearer ${token}` } }) : request,
+  ).pipe(
     catchError((error: unknown) => {
       if (error instanceof HttpErrorResponse && error.status === 401) {
-        void auth.signOut().then(() => router.navigate(['/login']));
+        // The session ended on the server (signed out elsewhere, expired,
+        // password changed): there is nothing left to sign out of.
+        auth.clear();
+        void router.navigate(['/login']);
       }
       return throwError(() => error);
     }),

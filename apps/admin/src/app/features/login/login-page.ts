@@ -18,6 +18,9 @@ import { AuthService } from '../../core/auth.service';
           @if (error(); as message) {
             <nz-alert nzType="error" [nzMessage]="message" nzShowIcon class="alert" />
           }
+          @if (notice(); as message) {
+            <nz-alert nzType="info" [nzMessage]="message" nzShowIcon class="alert" />
+          }
           <nz-form-item>
             <nz-form-label nzFor="email">Email</nz-form-label>
             <nz-form-control>
@@ -55,6 +58,17 @@ import { AuthService } from '../../core/auth.service';
           >
             Sign in
           </button>
+          <button
+            nz-button
+            nzType="link"
+            nzBlock
+            type="button"
+            class="forgot"
+            [disabled]="busy()"
+            (click)="forgot()"
+          >
+            Forgot your password?
+          </button>
         </form>
       </nz-card>
     </main>
@@ -73,6 +87,9 @@ import { AuthService } from '../../core/auth.service';
     .alert {
       margin-bottom: 16px;
     }
+    .forgot {
+      margin-top: 8px;
+    }
   `,
 })
 export class LoginPage {
@@ -83,6 +100,7 @@ export class LoginPage {
   protected password = '';
   protected readonly busy = signal(false);
   protected readonly error = signal<string | null>(null);
+  protected readonly notice = signal<string | null>(null);
 
   protected async submit(): Promise<void> {
     if (!this.email || !this.password || this.busy()) {
@@ -90,11 +108,35 @@ export class LoginPage {
     }
     this.busy.set(true);
     this.error.set(null);
+    this.notice.set(null);
     try {
       await this.auth.signIn(this.email.trim(), this.password);
       await this.router.navigate(['/']);
     } catch (error) {
       this.error.set(error instanceof Error ? error.message : 'Sign-in failed.');
+    } finally {
+      this.busy.set(false);
+    }
+  }
+
+  /** Sends a reset link to the address typed in the form. */
+  protected async forgot(): Promise<void> {
+    const email = this.email.trim();
+    this.error.set(null);
+    this.notice.set(null);
+    if (!email) {
+      this.error.set('Type your email first, then ask for the link.');
+      return;
+    }
+    this.busy.set(true);
+    try {
+      await this.auth.requestPasswordReset(email);
+      // The same answer whether or not the address has an account.
+      this.notice.set(
+        'If that address has an account, a link to choose a new password is on its way.',
+      );
+    } catch (error) {
+      this.error.set(error instanceof Error ? error.message : 'The request could not be sent.');
     } finally {
       this.busy.set(false);
     }
