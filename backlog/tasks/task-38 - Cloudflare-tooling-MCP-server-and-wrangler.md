@@ -1,11 +1,11 @@
 ---
 id: TASK-38
 title: 'Cloudflare tooling: MCP server and wrangler'
-status: In Progress
+status: Done
 assignee:
   - '@claude'
 created_date: '2026-11-24T21:24:42Z'
-updated_date: '2026-11-24T21:45:43Z'
+updated_date: '2026-11-24T22:42:28Z'
 labels:
   - infra
 milestone: m-5
@@ -21,9 +21,9 @@ All hosting moves to Cloudflare and every deploy runs from a developer machine, 
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 A project-level .mcp.json registers the cloudflare-api MCP server and is committed
-- [ ] #2 wrangler is a root dev dependency and `pnpm exec wrangler whoami` reports the account that owns speakukrainian.org
-- [ ] #3 The Cloudflare MCP tools can list the account and the speakukrainian.org zone
+- [x] #1 A project-level .mcp.json registers the cloudflare-api MCP server and is committed
+- [x] #2 wrangler is a root dev dependency and `pnpm exec wrangler whoami` reports the account that owns speakukrainian.org
+- [x] #3 The Cloudflare MCP tools can list the account and the speakukrainian.org zone
 <!-- AC:END -->
 
 ## Implementation Notes
@@ -34,3 +34,9 @@ Pending: `pnpm exec wrangler whoami` reports "not authenticated" - the owner has
 
 2026-11-24 (later): owner ran `wrangler login`; `pnpm exec wrangler whoami` reports the account bc185fa990014c1b4c5be0eda8a48429 and wrangler lists the D1 database and the R2 bucket. `wrangler containers list` answers without an entitlement error. Remaining before finalising: commit .mcp.json, package.json, pnpm-lock.yaml and pnpm-workspace.yaml.
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Registered the Cloudflare API MCP server in .mcp.json (authorised by the account owner), added wrangler 4.167 as a root dev dependency and allowed workerd builds in pnpm-workspace.yaml. Verified: the MCP lists the account and the speakukrainian.org zone, and `pnpm exec wrangler whoami` reports the account after `wrangler login`. Committed on branch m5-cloudflare-migration.
+<!-- SECTION:FINAL_SUMMARY:END -->
