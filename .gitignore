@@ -16,11 +16,6 @@ Thumbs.db
 .idea/
 *.swp
 
-# Local emulator state
-.data/
-firestore-debug.log
-firebase-debug.log
-
 # H5P working dirs and fetched client libraries, all under `apps/<app>/h5p/`.
 # Anchored at `apps/*/` rather than `**/`: the API's own module is
 # `apps/api/src/h5p/`, so a `**/h5p/<name>/` pattern silently ignores source

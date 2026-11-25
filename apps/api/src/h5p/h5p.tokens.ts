@@ -19,7 +19,7 @@ export const H5P_WORKING_DIRS = Symbol('H5P_WORKING_DIRS');
  *
  * Only multer writes here, and only for the length of one request. The
  * editor's temporary files are **not** local: they live in the bucket under
- * `h5p/temp/<ownerId>/`, because a file written by one Cloud Run instance has
+ * `h5p/temp/<ownerId>/`, because a file written by one container instance has
  * to be readable by the next.
  */
 export interface H5pWorkingDirs {

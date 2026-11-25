@@ -6,7 +6,7 @@ import type { AuthenticatedUser } from '../auth/authenticated-user.js';
  * The verified caller, for the handlers that record *who* acted rather than
  * only acting on their behalf.
  *
- * The global `FirebaseAuthGuard` makes the `undefined` branch unreachable; this
+ * The global `SessionAuthGuard` makes the `undefined` branch unreachable; this
  * narrows a type `CurrentUser` cannot guarantee on its own. One definition for
  * the whole module, in the file that already owns "who the caller is here":
  * both H5P controllers had a copy, and two copies are two answers to what an

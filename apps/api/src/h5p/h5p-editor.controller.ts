@@ -307,7 +307,7 @@ export class H5pEditorController {
    *
    * `:token` is consumed by `H5pUrlTokenGuard`, which is why this handler never
    * reads it: by the time it runs, `@CurrentUser()` is the editor the token was
-   * minted for, resolved through a live Firebase Auth read, and `@Roles`
+   * minted for, resolved through a live read of the account, and `@Roles`
    * has already decided. `wildcardPath(req)` then yields
    * `images/image-aB34xQz9.png` with nothing to strip, because the token is its
    * own path parameter. The `#tmp` suffix the client appends is a fragment and

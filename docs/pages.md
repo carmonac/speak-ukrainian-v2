@@ -67,3 +67,11 @@ translation at all is an empty string, so `{{#if text}}` can hide a block.
 **Preview** renders the unsaved form in a chosen language. If a template has a
 syntax error the public page shows a plain error page with the message instead
 of failing, and so does the preview.
+
+## When a change becomes visible
+
+Saving or deleting a page in the control panel takes effect on the public site
+on the very next load. The site keeps pages in memory between edits to avoid
+reading the database on every visit; the panel clears that memory whenever a
+page is saved or deleted. A change made directly in the database, not through
+the panel, shows up within a minute.

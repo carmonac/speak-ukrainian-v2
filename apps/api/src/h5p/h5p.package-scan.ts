@@ -27,7 +27,7 @@ const READABLE_COMPRESSION_METHODS = new Set([0, 8]);
 const MAX_SEGMENT_BYTES = 255;
 
 /**
- * A content file is stored at `h5p/content/<uuid>/<name>`, and Cloud Storage
+ * A content file is stored at `h5p/content/<uuid>/<name>`, and object storage
  * caps an object name at 1024 bytes — 49 of which that prefix already spends.
  * A longer name could not be stored even if it unpacked, and long before that
  * it is a `PATH_MAX` failure from `mkdir`.

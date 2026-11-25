@@ -200,7 +200,7 @@ describe('library paths', () => {
 });
 
 describe('assertSafeOwnerId', () => {
-  it('accepts a Firebase-shaped uid', () => {
+  it('accepts the shapes an account id can take', () => {
     expect(() => assertSafeOwnerId('a'.repeat(28))).not.toThrow();
     expect(() => assertSafeOwnerId('X4kQ_9-zLm2b')).not.toThrow();
   });

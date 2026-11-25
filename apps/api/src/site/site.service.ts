@@ -5,9 +5,16 @@ import type { NextFunction, Request, Response } from 'express';
 import { RESERVED_PAGE_PATH_PREFIXES } from '@speakukrainian/shared';
 import type { Env } from '../config/configuration.js';
 import { DatabaseService } from '../infra/db/database.service.js';
-import { PagesService } from '../pages/pages.service.js';
+import { FAVICON_ICO, FAVICON_SVG } from './favicon.js';
+import { PageCache } from './page-cache.js';
 import { preferredLocales } from './site.locale.js';
 import { SiteRenderer } from './site.renderer.js';
+
+/** The site's icon, at the two paths browsers look for one. */
+const ICONS: Record<string, { type: string; body: Buffer | string }> = {
+  '/favicon.ico': { type: 'image/x-icon', body: FAVICON_ICO },
+  '/favicon.svg': { type: 'image/svg+xml', body: FAVICON_SVG },
+};
 
 const BOT_PATTERN = /bot|crawl|spider|slurp|preview|monitor|curl|wget|headless/i;
 
@@ -21,7 +28,7 @@ export class SiteService {
   private readonly salt: string;
 
   constructor(
-    private readonly pages: PagesService,
+    private readonly pages: PageCache,
     private readonly renderer: SiteRenderer,
     private readonly db: DatabaseService,
     config: ConfigService<Env, true>,
@@ -31,6 +38,14 @@ export class SiteService {
 
   /** Express middleware; mounted in `main.ts` ahead of the Nest router. */
   middleware = (req: Request, res: Response, next: NextFunction): void => {
+    const icon = req.method === 'GET' || req.method === 'HEAD' ? ICONS[req.path] : undefined;
+    if (icon) {
+      // Every browser asks for /favicon.ico on its own, so the pages written
+      // in the panel get the icon without having to link it.
+      res.setHeader('Cache-Control', 'public, max-age=86400');
+      res.type(icon.type).send(icon.body);
+      return;
+    }
     if (
       (req.method !== 'GET' && req.method !== 'HEAD') ||
       RESERVED_PAGE_PATH_PREFIXES.some((p) => req.path === p || req.path.startsWith(`${p}/`))
@@ -48,10 +63,13 @@ export class SiteService {
     const locales = preferredLocales(req.headers['accept-language'], override);
 
     res.setHeader('Vary', 'Accept-Language');
-    // Always revalidated, so an edit in the panel is visible on the next load.
+    // Always revalidated by the browser and by Cloudflare, so an edit in the
+    // panel is visible on the next load. What makes a visit cheap is the page
+    // cache below, which the panel can empty; a copy held by a browser or the
+    // CDN is one it could not.
     res.setHeader('Cache-Control', 'no-cache');
 
-    const page = await this.pages.findByPath(path);
+    const page = await this.pages.get(path);
     if (!page) {
       res.status(404).type('html').send(this.renderer.notFoundPage());
       return;

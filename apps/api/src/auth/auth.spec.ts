@@ -412,7 +412,7 @@ describe('authentication', () => {
       );
 
       await bootstrap().ensureAdmin();
-      await bootstrap().onApplicationBootstrap();
+      expect(await bootstrap().ensureAdminWithRetries(1, 0)).toBe(true);
 
       expect(t.all('select count(*) as n from "user"')).toEqual([{ n: 1 }]);
       expect((await signIn('owner@example.com', DEFAULT_ADMIN_PASSWORD)).status).toBe(401);
@@ -460,7 +460,7 @@ describe('authentication', () => {
         return true;
       });
       try {
-        await bootstrap().onApplicationBootstrap();
+        await bootstrap().ensureAdminWithRetries(1, 0);
         await signIn('owner@example.com', 'a wrong guess');
       } finally {
         [...spies, stdout, stderr].forEach((spy) => spy.mockRestore());
@@ -469,6 +469,29 @@ describe('authentication', () => {
       expect(lines.join('\n')).toContain('owner@example.com');
       expect(lines.join('\n')).not.toContain(DEFAULT_ADMIN_PASSWORD);
       expect(lines.join('\n')).not.toContain('a wrong guess');
+    });
+
+    it('keeps trying while the database is not ready, then creates the administrator', async () => {
+      const accounts = new AccountsService(t.db, auth);
+      let failures = 2;
+      const flaky = Object.assign(Object.create(accounts) as AccountsService, {
+        adminExists: async () => {
+          if (failures-- > 0) throw new Error('no such table: user');
+          return accounts.adminExists();
+        },
+      });
+      const service = new AdminBootstrapService(auth, flaky, config);
+
+      expect(await service.ensureAdminWithRetries(5, 0)).toBe(true);
+      expect(t.all('select email, role from "user"')).toEqual([
+        { email: 'owner@example.com', role: 'admin' },
+      ]);
+    });
+
+    it('gives up after its attempts without throwing', async () => {
+      const broken = { adminExists: async () => Promise.reject(new Error('down')) };
+      const service = new AdminBootstrapService(auth, broken as unknown as AccountsService, config);
+      expect(await service.ensureAdminWithRetries(3, 0)).toBe(false);
     });
 
     it('fails with an explanation when the address belongs to a student', async () => {

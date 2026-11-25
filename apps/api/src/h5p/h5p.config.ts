@@ -30,11 +30,11 @@ export function createH5pConfig(baseUrl: string): H5PConfig {
     // objects for `H5P.CoursePresentation 1.22` — each under its own lock key
     // (`install-from-directory:<ubername>`), so they all run concurrently and
     // each one's budget measures the whole import rather than its own share of
-    // it. Measured against fake-gcs-server, which answers a small write in
-    // ~10 ms, that import runs 16-20 s and the stock 10 s fails it about two
-    // cold runs in three; real Cloud Storage is roughly an order of magnitude
-    // slower per object. Five minutes is Cloud Run's own default request
-    // timeout, so a pathological import now ends because the request ended,
+    // it. Measured against a local object-store emulator, which answers a small
+    // write in ~10 ms, that import runs 16-20 s and the stock 10 s fails it
+    // about two cold runs in three; a real bucket is slower per object. Five
+    // minutes is far longer than any import should take, so a pathological
+    // import now ends because the request ended,
     // rather than because a library budget expired mid-upload and threw away
     // work the caller cannot see was nearly done.
     installLibraryLockMaxOccupationTime: 300_000,

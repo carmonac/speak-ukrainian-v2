@@ -21,6 +21,7 @@ import {
 } from '@speakukrainian/shared';
 import { Roles } from '../auth/roles.decorator.js';
 import { ZodValidationPipe } from '../common/zod-validation.pipe.js';
+import { PageCache } from '../site/page-cache.js';
 import { SiteRenderer } from '../site/site.renderer.js';
 import { PagesService } from './pages.service.js';
 
@@ -32,6 +33,7 @@ export class PagesController {
   constructor(
     private readonly pages: PagesService,
     private readonly renderer: SiteRenderer,
+    private readonly cache: PageCache,
   ) {}
 
   @Get()
@@ -68,7 +70,7 @@ export class PagesController {
     @Body(new ZodValidationPipe(savePageSchema)) body: SavePageInput,
   ): Promise<PageDetail> {
     const page = await this.pages.create(body);
-    this.renderer.invalidate();
+    this.publish();
     return page;
   }
 
@@ -78,7 +80,7 @@ export class PagesController {
     @Body(new ZodValidationPipe(savePageSchema)) body: SavePageInput,
   ): Promise<PageDetail> {
     const page = await this.pages.update(id, body);
-    this.renderer.invalidate();
+    this.publish();
     return page;
   }
 
@@ -86,6 +88,15 @@ export class PagesController {
   @HttpCode(HttpStatus.NO_CONTENT)
   async remove(@Param('id', new ZodValidationPipe(idSchema)) id: string): Promise<void> {
     await this.pages.remove(id);
+    this.publish();
+  }
+
+  /**
+   * Makes a change to the pages visible on the public site at once: the site
+   * serves pages from memory (`PageCache`) and keeps compiled templates.
+   */
+  private publish(): void {
     this.renderer.invalidate();
+    this.cache.clear();
   }
 }

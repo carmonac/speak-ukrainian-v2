@@ -6,11 +6,10 @@
  * URL, so no body carries base64 — a typical three-locale rich text page is
  * 48 KB, a ten-locale one 152 KB, and the heaviest page worth calling realistic
  * (40 paragraphs, 30 audio nodes, 12 images, ten locales) is 539 KB. And every
- * JSON route here writes at most one Firestore document per request, which may
- * not exceed 1,048,576 bytes; the JSON body is always 1–2% larger than the
- * document it becomes, because JSON pays two quotes and escapes per string
- * where Firestore pays one byte. So a body over this limit essentially cannot
- * produce a storable document.
+ * JSON route here writes rows whose text columns the database caps at about
+ * 2 MB each (a D1 limit), and the largest of them, a page template, is itself
+ * limited to 1,000,000 characters by its schema. So a body over this limit is
+ * not something a legitimate client produces.
  *
  * This bounds the *request body*. Multipart uploads are bounded separately and
  * far more generously by `MEDIA_UPLOAD_RULES` and `MAX_H5P_UPLOAD_BYTES`, which

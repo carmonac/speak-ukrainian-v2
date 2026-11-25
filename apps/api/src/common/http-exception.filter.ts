@@ -85,8 +85,8 @@ function exposedClientError(exception: unknown): { status: number; message: stri
  * are logged with their stack but reported to the client as a generic 500 so we
  * never leak internals; a 5xx `HttpException` is logged too, since by the time
  * it arrives here the filter is the last thing that can record it. Every answer
- * it writes is labelled `Cache-Control: no-store` (ADR-033). A Firestore
- * transaction lost to contention is answered 503 with `Retry-After`, since
+ * it writes is labelled `Cache-Control: no-store` (ADR-033). A write
+ * lost to contention is answered 503 with `Retry-After`, since
  * nothing was written and a retry is the whole remedy. Once the
  * response has started nothing is written at all and the socket is severed.
  * ADR-017 records the whole contract and the reasoning behind each part.

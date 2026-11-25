@@ -19,8 +19,8 @@ from the previous SpeakUkrainian project and lives in `apps/api/src/h5p/`
 
 ## Storage
 
-Everything is in one private Supabase Storage bucket (`STORAGE_BUCKET`),
-reached through its S3-compatible endpoint by `infra/storage/storage.service.ts`:
+Everything is in one private Cloudflare R2 bucket, reached through the gateway
+bridge by `infra/storage/storage.service.ts` (no access keys, nothing public):
 
 | Prefix                              | Content                                                         |
 | ----------------------------------- | --------------------------------------------------------------- |

@@ -889,11 +889,11 @@ describe('H5pEditorService', () => {
     it('removes the content objects when the index write of a new exercise fails', async () => {
       // The objects would otherwise sit under a `randomUUID()` prefix that
       // nothing references, no route can enumerate and no route can delete.
-      harness.rows.createFailure = new Error('firestore unavailable');
+      harness.rows.createFailure = new Error('database unavailable');
 
       await expect(
         harness.service.save(undefined, body('Kyiv?'), { uid: 'editor-1' }),
-      ).rejects.toThrow('firestore unavailable');
+      ).rejects.toThrow('database unavailable');
 
       expect(harness.objects.paths().filter((path) => path.startsWith('h5p/content/'))).toEqual([]);
     });
@@ -904,11 +904,11 @@ describe('H5pEditorService', () => {
       // the newer truth, so a save that could not write an audit field may not
       // delete them.
       const created = await harness.service.save(undefined, body('Kyiv?'), { uid: 'editor-1' });
-      harness.rows.updateFailure = new Error('firestore unavailable');
+      harness.rows.updateFailure = new Error('database unavailable');
 
       await expect(
         harness.service.save(created.contentId, body('Lviv?'), { uid: 'editor-1' }),
-      ).rejects.toThrow('firestore unavailable');
+      ).rejects.toThrow('database unavailable');
 
       expect(harness.objects.paths()).toContain(`h5p/content/${created.contentId}/content.json`);
       expect(harness.objects.text(`h5p/content/${created.contentId}/content.json`)).toContain(

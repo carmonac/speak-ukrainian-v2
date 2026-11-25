@@ -5,7 +5,7 @@ dist
 coverage
 pnpm-lock.yaml
 backlog
-supabase/.temp
 apps/api/h5p
 .wrangler
 worker-configuration.d.ts
+.openidea

@@ -41,7 +41,7 @@ export const H5P_URL_TOKEN_EXPIRED_MESSAGE =
 export const H5P_URL_TOKEN_INVALID_MESSAGE = 'That editing link is not valid.';
 
 /**
- * A token that verified, for a Firebase account that is gone or disabled.
+ * A token that verified, for an account that is gone or banned.
  *
  * "Gone" means `auth/user-not-found` specifically. Every other Auth failure
  * behind this token — an outage, a socket error, a lost IAM grant — is this
@@ -73,7 +73,7 @@ interface H5pUrlTokenPayload {
  * A signed, self-describing credential naming *who* is asking, for how long.
  *
  * **It carries no role, deliberately.** The guard that accepts it resolves the
- * caller's current claims from Firebase and `@Roles('admin')` then decides, so
+ * caller's current role from the database and `@Roles('admin')` then decides, so
  * a token minted before a demotion stops working the moment the demotion lands.
  * A role in the payload would make the token a grant with a staleness window of
  * its whole lifetime.

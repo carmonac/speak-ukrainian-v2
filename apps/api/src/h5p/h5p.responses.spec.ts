@@ -369,7 +369,7 @@ describe('a storage stream that fails', () => {
 
   it('destroys the storage stream when the client goes away mid-seek', async () => {
     // Every seek ends this way: a media element cancels the request it was
-    // reading. Without this each one leaks an open Cloud Storage read.
+    // reading. Without this each one leaks an open object-store read.
     const { record, stream } = pipingWholeFile();
 
     record.res.emit('close');
@@ -402,7 +402,7 @@ describe('a storage stream that goes silent', () => {
    * The failure the `error` handler above cannot see.
    *
    * A bucket that drops the connection part way through a body raises neither
-   * `error` nor `end` on the stream the Cloud Storage client hands over —
+   * `error` nor `end` on the stream the object-store client hands over —
    * `node-fetch@2` swallows the premature close — so a `PassThrough` that never
    * speaks again is the shape production actually produces. Every other test in
    * this file emits an `Error`, which is what let a hang ship unnoticed.
@@ -433,7 +433,7 @@ describe('a storage stream that goes silent', () => {
     expect(record.ended).toBe(true);
     expect(record.headers.has('Content-Length')).toBe(false);
     expect(record.headers.get('Cache-Control')).toBe('no-store');
-    // The Cloud Storage read is released too; leaving it open is how a bucket
+    // The object-store read is released too; leaving it open is how a bucket
     // outage turns into an exhausted connection pool.
     expect(stream.destroyed).toBe(true);
     expect(errors()).toHaveLength(1);

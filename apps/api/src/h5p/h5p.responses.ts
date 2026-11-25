@@ -181,7 +181,7 @@ export function pipePartialStream(
  *
  * **A read that simply stops is a failure too, and it is the common one.** The
  * bucket dropping the connection part way through a body raises no `error` and
- * no `end` on this stream at all: the Cloud Storage client reads its response
+ * no `end` on this stream at all: the object-store client reads its response
  * through `node-fetch@2`, which pipes the socket into a `PassThrough` and does
  * not forward the `aborted` that Node raises on a premature close, so the
  * stream sits open with nothing coming. Without the timer below the response
@@ -260,7 +260,7 @@ function pipe(res: Response, stream: Readable, stallTimeoutMs: number): void {
     // Reported before the stream is destroyed, so that the log names the
     // silence rather than whatever the destroy makes the stream say about
     // itself; and destroyed rather than left to time out again, because this
-    // read is never going to speak and its Cloud Storage connection is ours to
+    // read is never going to speak and its object-store connection is ours to
     // release.
     report(new Error(`storage sent nothing for ${String(stallTimeoutMs)} ms`));
     stream.destroy();

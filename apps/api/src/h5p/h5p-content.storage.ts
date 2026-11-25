@@ -25,7 +25,7 @@ const METADATA_FILE = 'h5p.json';
 const PARAMETERS_FILE = 'content.json';
 
 /**
- * H5P content files in Cloud Storage, laid out exactly as `FileContentStorage`
+ * H5P content files in object storage, laid out exactly as `FileContentStorage`
  * lays them out on disk so the library's own path assumptions hold:
  * `h5p/content/<id>/h5p.json`, `content.json` and the package's content files
  * with their `content/` prefix stripped.

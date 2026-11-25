@@ -307,7 +307,7 @@ export class H5pEditorService {
    * builds it from `IUrlGenerator.temporaryFiles()`, which takes **no user**
    * (`H5PEditor.generateEditorIntegration` calls it with no arguments), so this
    * is a field the generator *could not* produce rather than one it produced
-   * wrongly. `user.id` **is** the caller's Firebase uid — `h5pUserFor` puts it
+   * wrongly. `user.id` **is** the caller's account id — `h5pUserFor` puts it
    * there — which is what makes the token bind to the right person and the
    * temporary-file prefix resolve to the right owner.
    *
@@ -699,7 +699,7 @@ export class H5pEditorService {
    * object per media file per newly created exercise, under a prefix no route
    * can enumerate or delete.
    *
-   * Opportunistic rather than scheduled: Cloud Run scales to zero, so an
+   * Opportunistic rather than scheduled: the container sleeps when idle, so an
    * interval only runs while an instance happens to be alive, which is exactly
    * what nothing guarantees. An instance serving an upload is an instance that
    * is alive, and an upload is when the garbage appears.

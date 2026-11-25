@@ -2,7 +2,8 @@
  * The student classroom: a static Angular build served by Cloudflare Workers
  * static assets. There is no Worker script; headers come from public/_headers.
  *
- * `pnpm --filter @speakukrainian/student deploy` builds and deploys it.
+ * `pnpm --filter @speakukrainian/student run deploy` builds and deploys it (`run`
+ * is needed: `pnpm deploy` on its own is a different, built-in command).
  */
 {
   "$schema": "../../node_modules/wrangler/config-schema.json",

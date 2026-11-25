@@ -50,7 +50,7 @@ import { H5pWorkingDirsModule } from './h5p.working-dirs.module.js';
 /**
  * H5P package import, and everything the H5P client in a browser reads back.
  *
- * `StorageModule` and `FirestoreModule` are `@Global`, so the two adapters and
+ * `StorageModule` and `DatabaseModule` are `@Global`, so the two adapters and
  * the repository need no imports here.
  */
 @Module({
@@ -98,7 +98,7 @@ import { H5pWorkingDirsModule } from './h5p.working-dirs.module.js';
     {
       /**
        * The editor's scratch storage, in the bucket rather than on disk: a temp
-       * file written by one Cloud Run instance is invisible to the next, and
+       * file written by one container instance is invisible to the next, and
        * the container filesystem is discarded anyway. The token stays so that
        * `H5PEditor`'s constructor argument is named by what it is rather than
        * by which class currently implements it.

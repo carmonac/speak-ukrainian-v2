@@ -293,7 +293,7 @@ describe('seed', () => {
 });
 
 describe('what was left behind', () => {
-  it('has no trace of Postgres or Supabase constructs', () => {
+  it('has no trace of Postgres-only or hosted-database constructs', () => {
     const sql = readdirSync(MIGRATIONS_DIR)
       .filter((f) => f.endsWith('.sql'))
       .map((f) => readFileSync(new URL(f, MIGRATIONS_DIR), 'utf8'))

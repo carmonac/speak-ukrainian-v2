@@ -50,7 +50,7 @@ export const TEMP_SWEEP_BATCH_SIZE = 1_000;
 const UNKNOWN_CREATION_TIME_MS = 0;
 
 /**
- * The editor's scratch storage in Cloud Storage: `h5p/temp/<ownerId>/<filename>`.
+ * The editor's scratch storage in the bucket: `h5p/temp/<ownerId>/<filename>`.
  *
  * **The owner is a path prefix rather than an attribute**, which is what
  * `DirectoryTemporaryFileStorage` does on disk and what the interface forces.

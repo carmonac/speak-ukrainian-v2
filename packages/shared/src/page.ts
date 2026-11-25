@@ -5,7 +5,13 @@ import { localeCodeSchema } from './common.js';
  * Paths the public site can never serve, because another part of the system
  * owns them.
  */
-export const RESERVED_PAGE_PATH_PREFIXES = ['/api', '/healthz', '/favicon.ico', '/robots.txt'];
+export const RESERVED_PAGE_PATH_PREFIXES = [
+  '/api',
+  '/healthz',
+  '/favicon.ico',
+  '/favicon.svg',
+  '/robots.txt',
+];
 
 /** URL path of a page: `/`, `/about`, `/courses/spanish`. Lowercase, no trailing slash. */
 export const pagePathSchema = z

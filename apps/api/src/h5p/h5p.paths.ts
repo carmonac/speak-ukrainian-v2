@@ -6,8 +6,8 @@ import { STORAGE_PREFIXES } from '@speakukrainian/shared';
  * Content ids address a storage prefix, so they may only be path-safe atoms.
  *
  * It looks like `documentIdSchema`'s character class and is not it: this bounds
- * a **Cloud Storage path segment**, which Cloud Storage is far more permissive
- * about than Firestore is about an id — `__name__` and `|` are both legal
+ * an **object-storage path segment**, which object storage is far more permissive
+ * about than a database is about an id — `__name__` and `|` are both legal
  * object names, and refusing the second is this rule's own choice, made for the
  * reason `assertSafeOwnerId` gives. Replacing it with the shared schema would
  * swap one rule for another that happens to have the same alphabet and a
@@ -32,7 +32,7 @@ const SAFE_CONTENT_ID = /^[A-Za-z0-9_-]{1,64}$/;
  * is the guard for that, and it runs before the library opens the package.
  *
  * The rule is deliberately stricter than the library's own `checkFilename`: a
- * Cloud Storage object name is a flat string, so there is no `path.join` to
+ * object name is a flat string, so there is no `path.join` to
  * normalise a `..` away afterwards.
  */
 export function assertSafeRelativePath(filename: string): void {
@@ -69,7 +69,7 @@ function unsafeReason(filename: string): UnsafeReason | null {
     return 'illegal-absolute-filename';
   }
   // A backslash is a separator on Windows and a legal object-name character in
-  // Cloud Storage, so `..\..\x` would survive a slash-only check.
+  // object storage, so `..\..\x` would survive a slash-only check.
   if (filename.includes('\\')) {
     return 'illegal-character';
   }
@@ -114,9 +114,9 @@ export function assertSafeContentId(contentId: string): void {
 /**
  * A temporary file's owner is a path segment, so it obeys the same rule a
  * content id does — under an id of its own, because "that path is not valid"
- * said about a Firebase uid names the wrong thing to whoever reads it.
+ * said about an account id names the wrong thing to whoever reads it.
  *
- * A Firebase uid satisfies this today: 28 alphanumeric characters. An auth
+ * An account id satisfies this today: it is a UUID. An auth
  * provider whose subject carried a `:` or a `|` would turn every editor upload
  * into a 400, which is loud rather than silent, so it is named here rather
  * than worked around with an encoding nothing else in this module uses.

@@ -208,7 +208,7 @@ const CLIENT_FAULT_IDS = new Set(['not-in-whitelist']);
  * everything else returns `null`.
  *
  * That `null` is the point of the function. A storage outage, a bug in an
- * adapter or a broken Firestore connection is not the caller's file being
+ * adapter or a broken database connection is not the caller's file being
  * wrong, so it is rethrown, logged by the global filter and answered as a 500 —
  * rather than being reported to the admin as "your file is corrupt", which
  * would send them looking for a problem in a file that is fine.

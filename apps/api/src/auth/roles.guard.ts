@@ -10,7 +10,7 @@ import { ROLES_KEY } from './roles.decorator.js';
 import type { RequestWithUser } from './authenticated-user.js';
 
 /**
- * Enforces `@Roles(...)`. Runs after {@link FirebaseAuthGuard}, so
+ * Enforces `@Roles(...)`. Runs after {@link SessionAuthGuard}, so
  * `request.user` is already populated. Roles are hierarchical: an `admin`
  * satisfies a requirement of `editor`.
  */

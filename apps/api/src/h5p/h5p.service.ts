@@ -162,8 +162,8 @@ export class H5pService {
   /**
    * Removes an exercise's objects and then its index document.
    *
-   * The two halves cannot be one transaction — one is Cloud Storage, the other
-   * Firestore — so one of them survives a crash between them, and the objects
+   * The two halves cannot be one transaction — one is object storage, the other
+   * the database — so one of them survives a crash between them, and the objects
    * go first so that **an object never outlives its index row**. The row is
    * what names the objects; delete it first and a crash leaves files under a
    * `randomUUID()` prefix nothing can ever name again, and, because
@@ -180,7 +180,7 @@ export class H5pService {
    * leftovers and the row. `deleteByPrefix` is a no-op on an empty prefix and
    * sweeps whatever is left.
    *
-   * So the Firestore document is the sole authority for the 404; storage state
+   * So the index row is the sole authority for the 404; storage state
    * never decides a status code. That authority is `exists`, not a read: a row
    * whose stored shape no longer satisfies the schema still has to be removable
    * through this route, which is the repair path the surviving-row case above

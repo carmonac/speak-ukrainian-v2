@@ -21,8 +21,8 @@ type FileFilterCallback = (error: Error | null, acceptFile: boolean) => void;
  * No `storage` is set here: `H5pModule` supplies `dest` through
  * `MulterModule.registerAsync`, so multer writes the package to disk under
  * `<H5P_TEMP_DIR>/uploads` and the handler gets a `path`. Memory storage would
- * be wrong twice over — 100 MB held per concurrent upload against Cloud Run's
- * default memory, and the importer wants a file path anyway.
+ * be wrong twice over — 100 MB held per concurrent upload against the container's
+ * 1 GiB of memory, and the importer wants a file path anyway.
  *
  * `limits.fileSize` is what keeps an oversize upload cheap: busboy emits
  * `limit` as soon as the byte count is exceeded, so nothing beyond the limit is

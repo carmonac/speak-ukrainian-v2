@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "wrangler dev --infer-origin-from-routes=false --test-scheduled",
+    "dev": "CI=1 wrangler d1 migrations apply speakukrainian --local && wrangler dev --infer-origin-from-routes=false --test-scheduled",
     "smoke": "wrangler dev --config smoke/wrangler.jsonc",
     "smoke:api": "wrangler dev --config smoke/wrangler.api.jsonc --infer-origin-from-routes=false --test-scheduled",
     "smoke:api:migrate": "wrangler d1 migrations apply speakukrainian-local --local --config smoke/wrangler.api.jsonc",

@@ -19,7 +19,7 @@ const LIBRARY_METADATA_FILE = 'library.json';
 const UBERNAME_DIRECTORY = /^([\w.]+)-(\d+)\.(\d+)$/i;
 
 /**
- * H5P libraries in Cloud Storage, under `h5p/libraries/<Machine.Name-major.minor>/`.
+ * H5P libraries in object storage, under `h5p/libraries/<Machine.Name-major.minor>/`.
  *
  * Two consistency properties differ from a filesystem and cannot be fixed here,
  * because object storage has no atomic multi-object write and no rename:
@@ -32,7 +32,7 @@ const UBERNAME_DIRECTORY = /^([\w.]+)-(\d+)\.(\d+)$/i;
  * - A crash mid-install leaves a partial library that the next install sees as
  *   present. That rollback is the only mitigation, and it is the library's.
  *
- * `LibraryManager`'s default lock provider is in-process, so two Cloud Run
+ * `LibraryManager`'s default lock provider is in-process, so two container
  * instances installing the same library at the same moment are not serialised.
  * The library's `ILockProvider` is the seam if that ever matters.
  */

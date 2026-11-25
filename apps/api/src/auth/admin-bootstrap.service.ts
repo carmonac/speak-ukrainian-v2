@@ -10,6 +10,9 @@ import { AUTH, type Auth } from './auth.js';
  */
 export const DEFAULT_ADMIN_PASSWORD = 'admin123';
 
+const BOOTSTRAP_ATTEMPTS = 10;
+const BOOTSTRAP_RETRY_DELAY_MS = 3_000;
+
 /**
  * Creates the single administrator the first time the API boots against a
  * database that has none. It never touches an existing administrator.
@@ -24,13 +27,37 @@ export class AdminBootstrapService implements OnApplicationBootstrap {
     private readonly config: ConfigService<Env, true>,
   ) {}
 
-  async onApplicationBootstrap(): Promise<void> {
-    try {
-      await this.ensureAdmin();
-    } catch (error) {
-      // The API still serves the public site and students without an admin.
-      this.logger.error(`Could not check or create the admin account: ${String(error)}`);
+  /**
+   * Does not hold the start-up back, and does not give up at the first
+   * failure: the database may not be reachable yet (in development the gateway
+   * can still be applying migrations when the API starts; in production the
+   * bridge comes up with the container).
+   */
+  onApplicationBootstrap(): void {
+    void this.ensureAdminWithRetries();
+  }
+
+  /** Resolves once the administrator exists, or the attempts are used up. */
+  async ensureAdminWithRetries(
+    attempts = BOOTSTRAP_ATTEMPTS,
+    delayMs = BOOTSTRAP_RETRY_DELAY_MS,
+  ): Promise<boolean> {
+    for (let attempt = 1; attempt <= attempts; attempt++) {
+      try {
+        await this.ensureAdmin();
+        return true;
+      } catch (error) {
+        const last = attempt === attempts;
+        // The API still serves the public site and students without an admin.
+        this.logger[last ? 'error' : 'warn'](
+          `Could not check or create the admin account (attempt ${attempt} of ${attempts}): ${String(error)}`,
+        );
+        if (!last) {
+          await new Promise((resolve) => setTimeout(resolve, delayMs));
+        }
+      }
     }
+    return false;
   }
 
   async ensureAdmin(): Promise<void> {
