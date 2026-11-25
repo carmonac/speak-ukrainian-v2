@@ -48,13 +48,15 @@ function post(body: unknown): Request {
   });
 }
 
+const NO_EMAIL = {} as SendEmail;
+
 describe('handleBridge', () => {
   it('runs a query with its parameters and returns rows and meta', async () => {
     const { db, calls } = fakeDb();
     const response = await handleBridge(
       post({ sql: 'select * from pages where id = ?', params: ['p1'] }),
       '/d1/query',
-      { db, files: NO_FILES },
+      { db, files: NO_FILES, email: NO_EMAIL },
     );
     expect(response.status).toBe(200);
     expect(await response.json()).toEqual({
@@ -69,6 +71,7 @@ describe('handleBridge', () => {
     await handleBridge(post({ sql: 'select ?, ?', params: [true, false] }), '/d1/query', {
       db,
       files: NO_FILES,
+      email: NO_EMAIL,
     });
     expect(calls[0]?.params).toEqual([1, 0]);
   });
@@ -80,7 +83,7 @@ describe('handleBridge', () => {
         statements: [{ sql: 'delete from a' }, { sql: 'insert into a values (?)', params: [1] }],
       }),
       '/d1/batch',
-      { db, files: NO_FILES },
+      { db, files: NO_FILES, email: NO_EMAIL },
     );
     expect(response.status).toBe(200);
     const body = (await response.json()) as { results: unknown[] };
@@ -94,6 +97,7 @@ describe('handleBridge', () => {
     const response = await handleBridge(post({ sql: 'insert into pages' }), '/d1/query', {
       db,
       files: NO_FILES,
+      email: NO_EMAIL,
     });
     expect(response.status).toBe(422);
     expect(await response.json()).toEqual({
@@ -108,7 +112,7 @@ describe('handleBridge', () => {
     ['an empty batch', { statements: [] }, '/d1/batch'],
   ])('rejects %s with 400 and runs nothing', async (_name, body, path) => {
     const { db, calls } = fakeDb();
-    const response = await handleBridge(post(body), path, { db, files: NO_FILES });
+    const response = await handleBridge(post(body), path, { db, files: NO_FILES, email: NO_EMAIL });
     expect(response.status).toBe(400);
     expect(calls).toEqual([]);
   });
@@ -117,6 +121,7 @@ describe('handleBridge', () => {
     const response = await handleBridge(post('not json'), '/d1/query', {
       db: fakeDb().db,
       files: NO_FILES,
+      email: NO_EMAIL,
     });
     expect(response.status).toBe(400);
   });
@@ -124,9 +129,17 @@ describe('handleBridge', () => {
   it('rejects other methods and unknown routes', async () => {
     const { db } = fakeDb();
     const get = new Request('http://gateway.internal/d1/query');
-    expect((await handleBridge(get, '/d1/query', { db, files: NO_FILES })).status).toBe(404);
     expect(
-      (await handleBridge(post({ sql: 'select 1' }), '/d1/exec', { db, files: NO_FILES })).status,
+      (await handleBridge(get, '/d1/query', { db, files: NO_FILES, email: NO_EMAIL })).status,
+    ).toBe(404);
+    expect(
+      (
+        await handleBridge(post({ sql: 'select 1' }), '/d1/exec', {
+          db,
+          files: NO_FILES,
+          email: NO_EMAIL,
+        })
+      ).status,
     ).toBe(404);
   });
 });

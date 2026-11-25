@@ -1,0 +1,59 @@
+/**
+ * The real API image under the gateway, in container mode, on this machine.
+ * Run with `pnpm --filter @speakukrainian/gateway smoke:api` (needs Docker);
+ * the first run builds the image, which takes a few minutes.
+ *
+ * It is what production does, with local URLs and a local database and
+ * bucket of its own (state under smoke/.wrangler). Before the first run:
+ *   cp smoke/.dev.vars.example smoke/.dev.vars     # and fill in the secrets
+ *   pnpm --filter @speakukrainian/gateway smoke:api:migrate
+ *
+ * Never deployed.
+ */
+{
+  "$schema": "../../../node_modules/wrangler/config-schema.json",
+  "name": "speakukrainian-gateway-local",
+  "main": "../src/index.ts",
+  "compatibility_date": "2026-11-01",
+
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "speakukrainian-local",
+      "database_id": "00000000-0000-0000-0000-000000000001",
+      "migrations_dir": "../migrations",
+    },
+  ],
+  "r2_buckets": [{ "binding": "FILES", "bucket_name": "speakukrainian-local" }],
+  "send_email": [{ "name": "EMAIL" }],
+
+  "containers": [
+    {
+      "class_name": "ApiContainer",
+      "scheduling_policy": "durable_object",
+      "images": {
+        "base": { "dockerfile": "../../api/Dockerfile", "build_context": "../../.." },
+      },
+    },
+  ],
+  "durable_objects": {
+    "bindings": [{ "name": "API", "class_name": "ApiContainer" }],
+  },
+  "exports": {
+    "ApiContainer": { "type": "durable-object", "storage": "sqlite" },
+  },
+
+  "vars": {
+    "NODE_ENV": "production",
+    "PUBLIC_SITE_URL": "http://localhost:8789",
+    "ADMIN_APP_URL": "http://localhost:4200",
+    "STUDENT_APP_URL": "http://localhost:4300",
+    "CORS_ORIGINS": "http://localhost:4200,http://localhost:4300",
+    "H5P_BASE_URL": "http://localhost:8789/api/h5p",
+    // Nothing leaves the machine.
+    "EMAIL_DELIVERY": "log",
+    "EMAIL_FROM": "SpeakUkrainian <no-reply@speakukrainian.org>",
+  },
+
+  "dev": { "port": 8789 },
+}

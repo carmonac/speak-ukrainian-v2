@@ -1,7 +1,6 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { APP_FILTER, APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
-import { ScheduleModule } from '@nestjs/schedule';
 import { AuthModule } from './auth/auth.module.js';
 import { RolesGuard } from './auth/roles.guard.js';
 import { SessionAuthGuard } from './auth/session-auth.guard.js';
@@ -39,7 +38,6 @@ import { UsersModule } from './users/users.module.js';
       envFilePath: ['.env', '../../.env'],
       validate: (raw) => envSchema.parse(raw),
     }),
-    ScheduleModule.forRoot(),
     BridgeModule,
     DatabaseModule,
     ClockModule,

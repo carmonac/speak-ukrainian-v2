@@ -22,6 +22,13 @@ export default [
     },
   },
   {
+    files: ['src/index.ts'],
+    rules: {
+      // A Worker's console is its log: this is where a scheduled run reports.
+      'no-console': 'off',
+    },
+  },
+  {
     files: ['src/env.d.ts'],
     rules: {
       // Declaration merging: the empty bodies are the point.

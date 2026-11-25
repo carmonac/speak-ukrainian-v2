@@ -3,7 +3,7 @@
  *
  * Container mode (production): every request for speakukrainian.org is handed
  * to the one ApiContainer instance, which runs the NestJS API — the REST API
- * under /api and the public site. The API reaches D1 and R2 through the bridge, which
+ * under /api and the public site. The API reaches D1, R2 and e-mail through the bridge, which
  * exists only as an intercepted outbound host of that container.
  *
  * Local mode (`wrangler dev` with LOCAL_API_ORIGIN in .dev.vars): no container.
@@ -13,6 +13,7 @@
  */
 import { WorkerEntrypoint } from 'cloudflare:workers';
 import { handleBridge, type BridgeBindings } from './bridge';
+import { runDailyJobs } from './cron';
 
 export { ApiContainer } from './api-container';
 
@@ -34,7 +35,7 @@ export class Bridge extends WorkerEntrypoint<Env> {
 }
 
 function bindings(env: Env): BridgeBindings {
-  return { db: env.DB, files: env.FILES };
+  return { db: env.DB, files: env.FILES, email: env.EMAIL };
 }
 
 function timingSafeEqual(a: string, b: string): boolean {
@@ -91,5 +92,24 @@ export default {
     }
 
     return env.API.getByName(API_INSTANCE).fetch(withForwardedHeaders(request, url));
+  },
+
+  /** The Cron Trigger (see `triggers` in wrangler.jsonc): once a day. */
+  async scheduled(_controller, env): Promise<void> {
+    const result = await runDailyJobs(env.CRON_SECRET, (request) => {
+      if (env.LOCAL_API_ORIGIN) {
+        const target = new URL(new URL(request.url).pathname, env.LOCAL_API_ORIGIN);
+        return fetch(new Request(target, request));
+      }
+      // Straight to the container: this call does not go out to the internet,
+      // and it wakes the container if it was asleep.
+      return env.API.getByName(API_INSTANCE).fetch(request);
+    });
+    if (result.ok) {
+      console.log(`Daily jobs done: ${result.detail}`);
+    } else {
+      // Thrown so the run shows as failed in the Cron Trigger's history.
+      throw new Error(`Daily jobs failed (${result.status}): ${result.detail}`);
+    }
   },
 } satisfies ExportedHandler<Env>;

@@ -28,8 +28,9 @@ interface CourseForSale {
  * The browser is only ever redirected: the enrollment is created by the
  * signed webhook, never by the student returning to the success page.
  *
- * Without a Stripe key (never in production) a purchase completes instantly,
- * so the whole classroom can be exercised locally.
+ * Without a Stripe key a purchase completes instantly outside production, so
+ * the whole classroom can be exercised locally. In production a paid course
+ * cannot be bought without one; free courses always can.
  */
 @Injectable()
 export class PaymentsService {
@@ -37,6 +38,7 @@ export class PaymentsService {
   private readonly stripe: Stripe | null;
   private readonly webhookSecret: string | undefined;
   private readonly studentUrl: string;
+  private readonly production: boolean;
 
   constructor(
     private readonly db: DatabaseService,
@@ -46,8 +48,13 @@ export class PaymentsService {
     this.stripe = key ? new Stripe(key) : null;
     this.webhookSecret = config.get('STRIPE_WEBHOOK_SECRET', { infer: true });
     this.studentUrl = config.get('STUDENT_APP_URL', { infer: true }).replace(/\/$/, '');
+    this.production = config.get('NODE_ENV', { infer: true }) === 'production';
     if (!this.stripe) {
-      this.logger.warn('STRIPE_SECRET_KEY is not set: purchases complete instantly (dev mode).');
+      this.logger.warn(
+        this.production
+          ? 'STRIPE_SECRET_KEY is not set: paid courses cannot be bought until it is.'
+          : 'STRIPE_SECRET_KEY is not set: purchases complete instantly (dev mode).',
+      );
     }
   }
 
@@ -67,6 +74,13 @@ export class PaymentsService {
     );
     if (owned) {
       throw new ConflictException('You already own this course.');
+    }
+
+    // Never in production: without Stripe a paid course would be given away.
+    if (course.price_cents > 0 && !this.stripe && this.production) {
+      throw new ServiceUnavailableException(
+        'Payments are not available yet. Please try again later.',
+      );
     }
 
     const courseUrl = `${this.studentUrl}/my-courses/${course.id}`;

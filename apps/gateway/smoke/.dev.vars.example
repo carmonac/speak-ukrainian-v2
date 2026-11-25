@@ -1,0 +1,12 @@
+# Copy to smoke/.dev.vars (untracked). Secrets of the local container run
+# (smoke/wrangler.api.jsonc); in production these are Wrangler secrets.
+
+# At least 32 random characters each: `openssl rand -base64 48`
+AUTH_SECRET=
+H5P_URL_TOKEN_SECRET=
+
+# At least 16 characters.
+CRON_SECRET=
+
+# The administrator created on first start, with the default password.
+ADMIN_EMAIL=admin@example.com

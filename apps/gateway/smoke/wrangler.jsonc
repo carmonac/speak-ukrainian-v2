@@ -23,6 +23,8 @@
 
   "r2_buckets": [{ "binding": "FILES", "bucket_name": "smoke" }],
 
+  "send_email": [{ "name": "EMAIL" }],
+
   "containers": [
     {
       "class_name": "ApiContainer",

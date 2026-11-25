@@ -17,6 +17,14 @@ const READY_INTERVAL_MS = 200;
 const INACTIVITY_TIMEOUT_MS = 30 * 60 * 1000;
 
 /**
+ * The size of the container: 1/4 vCPU, 1 GiB of memory, 4 GB of disk. Enough
+ * for the API, which streams uploads and downloads rather than holding them;
+ * the next size up (`standard-1`: 1/2 vCPU, 4 GiB) is the one to try if
+ * importing large H5P packages turns out slow.
+ */
+const INSTANCE_TYPE = 'basic';
+
+/**
  * Owns the single API container.
  *
  * The Worker always addresses the same named instance, and a Durable Object
@@ -96,6 +104,7 @@ export class ApiContainer extends DurableObject<Env> {
 
     container.start({
       image: container.images.base,
+      instance: INSTANCE_TYPE,
       // The API calls Stripe and R2 directly.
       enableInternet: true,
       env: this.containerEnv(),

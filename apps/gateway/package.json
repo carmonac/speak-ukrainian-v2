@@ -4,8 +4,10 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "wrangler dev --infer-origin-from-routes=false",
+    "dev": "wrangler dev --infer-origin-from-routes=false --test-scheduled",
     "smoke": "wrangler dev --config smoke/wrangler.jsonc",
+    "smoke:api": "wrangler dev --config smoke/wrangler.api.jsonc --infer-origin-from-routes=false --test-scheduled",
+    "smoke:api:migrate": "wrangler d1 migrations apply speakukrainian-local --local --config smoke/wrangler.api.jsonc",
     "build": "wrangler deploy --dry-run --outdir dist --containers-rollout=none",
     "types": "wrangler types",
     "typecheck": "wrangler types && tsc -p tsconfig.json --noEmit && tsc -p test/tsconfig.json --noEmit",

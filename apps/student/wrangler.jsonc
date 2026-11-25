@@ -1,0 +1,18 @@
+/**
+ * The student classroom: a static Angular build served by Cloudflare Workers
+ * static assets. There is no Worker script; headers come from public/_headers.
+ *
+ * `pnpm --filter @speakukrainian/student deploy` builds and deploys it.
+ */
+{
+  "$schema": "../../node_modules/wrangler/config-schema.json",
+  "name": "speakukrainian-student",
+  "compatibility_date": "2026-11-01",
+  "workers_dev": false,
+  "routes": [{ "pattern": "student.speakukrainian.org", "custom_domain": true }],
+  "assets": {
+    "directory": "./dist/student/browser",
+    // Client-side routes: any path that is not a file gets index.html.
+    "not_found_handling": "single-page-application",
+  },
+}

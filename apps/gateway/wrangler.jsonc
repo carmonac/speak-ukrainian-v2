@@ -15,6 +15,10 @@
   "routes": [{ "pattern": "speakukrainian.org", "custom_domain": true }],
   "observability": { "enabled": true },
 
+  // Once a day, 08:00 UTC: the gateway asks the API to send chat reminders
+  // (src/cron.ts). Needs the CRON_SECRET secret: `wrangler secret put CRON_SECRET`.
+  "triggers": { "crons": ["0 8 * * *"] },
+
   "d1_databases": [
     {
       "binding": "DB",
@@ -27,6 +31,10 @@
   // H5P content, libraries and temporary uploads. Private: no public bucket
   // URL, no custom domain; files are only ever served by the API.
   "r2_buckets": [{ "binding": "FILES", "bucket_name": "speakukrainian-h5p" }],
+
+  // Cloudflare Email Sending. The domain is onboarded in the dashboard
+  // (Email Service > Email Sending); this binding may only send as no-reply.
+  "send_email": [{ "name": "EMAIL", "allowed_sender_addresses": ["no-reply@speakukrainian.org"] }],
 
   "containers": [
     {
@@ -46,6 +54,17 @@
 
   "vars": {
     "NODE_ENV": "production",
+    // Everything here is passed on to the API container as its environment
+    // (see ApiContainer.containerEnv), together with the Worker secrets:
+    // AUTH_SECRET, H5P_URL_TOKEN_SECRET, CRON_SECRET, ADMIN_EMAIL and, once
+    // payments are live, STRIPE_SECRET_KEY and STRIPE_WEBHOOK_SECRET.
+    "PUBLIC_SITE_URL": "https://speakukrainian.org",
+    "ADMIN_APP_URL": "https://admin.speakukrainian.org",
+    "STUDENT_APP_URL": "https://student.speakukrainian.org",
+    "CORS_ORIGINS": "https://admin.speakukrainian.org,https://student.speakukrainian.org",
+    "H5P_BASE_URL": "https://speakukrainian.org/api/h5p",
+    "EMAIL_DELIVERY": "send",
+    "EMAIL_FROM": "SpeakUkrainian <no-reply@speakukrainian.org>",
   },
 
   // `pnpm dev` runs the API as a plain Node process, so the container is not

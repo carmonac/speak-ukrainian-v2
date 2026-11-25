@@ -1,5 +1,10 @@
 import { beforeEach, describe, expect, it } from 'vitest';
-import { ConflictException, ForbiddenException, NotFoundException } from '@nestjs/common';
+import {
+  ConflictException,
+  ForbiddenException,
+  NotFoundException,
+  ServiceUnavailableException,
+} from '@nestjs/common';
 import type { ConfigService } from '@nestjs/config';
 import type { AuthenticatedUser } from '../auth/authenticated-user.js';
 import type { Env } from '../config/configuration.js';
@@ -115,6 +120,35 @@ describe('student flows: checkout, my courses, progress', () => {
       );
       await fulfil('ghost');
       expect(t.all('select count(*) as n from enrollments')).toEqual([{ n: 0 }]);
+    });
+  });
+
+  describe('checkout in production without Stripe', () => {
+    const productionConfig = {
+      get: (key: string) =>
+        key === 'STUDENT_APP_URL'
+          ? 'http://localhost:4300/'
+          : key === 'NODE_ENV'
+            ? 'production'
+            : undefined,
+    } as unknown as ConfigService<Env, true>;
+
+    it('refuses a paid course instead of giving it away, and writes nothing', async () => {
+      const production = new PaymentsService(t.db, productionConfig);
+      await expect(production.checkout(student, courseId)).rejects.toBeInstanceOf(
+        ServiceUnavailableException,
+      );
+      expect(t.all('select count(*) as n from orders')).toEqual([{ n: 0 }]);
+      expect(t.all('select count(*) as n from enrollments')).toEqual([{ n: 0 }]);
+    });
+
+    it('still enrolls in a free course', async () => {
+      t.all(`update courses set price_cents = 0 where id = ? returning id`, courseId);
+      const production = new PaymentsService(t.db, productionConfig);
+      expect((await production.checkout(student, courseId)).enrolled).toBe(true);
+      expect(t.all('select provider, status from orders')).toEqual([
+        { provider: 'free', status: 'paid' },
+      ]);
     });
   });
 

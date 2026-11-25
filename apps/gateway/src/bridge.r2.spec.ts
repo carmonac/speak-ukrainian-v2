@@ -120,6 +120,8 @@ function fakeBucket() {
 const NO_DB = {} as D1Database;
 const text = (stored: Stored | undefined) => new TextDecoder().decode(stored?.body);
 
+const NO_EMAIL = {} as SendEmail;
+
 describe('bridge: R2', () => {
   let bucket: ReturnType<typeof fakeBucket>;
 
@@ -137,6 +139,7 @@ describe('bridge: R2', () => {
     return handleBridge(new Request(url, { method, headers, body: init.body }), path, {
       db: NO_DB,
       files: bucket.files,
+      email: NO_EMAIL,
     });
   }
 
@@ -169,7 +172,7 @@ describe('bridge: R2', () => {
     const noLength = await handleBridge(
       new Request('http://gateway.internal/r2/object?key=a', { method: 'PUT' }),
       '/r2/object',
-      { db: NO_DB, files: bucket.files },
+      { db: NO_DB, files: bucket.files, email: NO_EMAIL },
     );
     expect(noLength.status).toBe(400);
     expect((await call('PUT', '/r2/object', { body: 'x' })).status).toBe(400);

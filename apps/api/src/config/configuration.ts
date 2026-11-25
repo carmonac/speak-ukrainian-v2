@@ -73,9 +73,23 @@ export const envSchema = z.object({
   STRIPE_SECRET_KEY: optionalSecret,
   STRIPE_WEBHOOK_SECRET: optionalSecret,
 
-  /** SendGrid API key. Without it emails are written to the log instead of sent. */
-  SENDGRID_API_KEY: optionalSecret,
-  EMAIL_FROM: z.string().default('SpeakUkrainian <no-reply@example.com>'),
+  /**
+   * `send` hands emails to Cloudflare Email Sending through the gateway;
+   * `log` only writes them to the log. The gateway sets `send` in production.
+   */
+  EMAIL_DELIVERY: z.enum(['send', 'log']).default('log'),
+  /** Must be an address of the domain onboarded in Cloudflare Email Sending. */
+  EMAIL_FROM: z.string().default('SpeakUkrainian <no-reply@speakukrainian.org>'),
+
+  /**
+   * Shared with the gateway, whose daily Cron Trigger presents it to
+   * `POST /api/internal/chat-reminders`. Without it that endpoint is off.
+   */
+  CRON_SECRET: z
+    .string()
+    .optional()
+    .transform((value) => (value && value.trim() !== '' ? value.trim() : undefined))
+    .refine((value) => value === undefined || value.length >= 16, 'at least 16 characters'),
 
   /** Hours an admin chat message may stay unanswered before the student is emailed. */
   CHAT_REMINDER_AFTER_HOURS: z.coerce.number().min(0).default(24),

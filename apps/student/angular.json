@@ -47,12 +47,34 @@
                   "maximumError": "16kb"
                 }
               ],
-              "outputHashing": "all"
+              "outputHashing": "all",
+              "assets": [
+                {
+                  "glob": "**/*",
+                  "input": "public"
+                },
+                {
+                  "glob": "config.json",
+                  "input": "config/production",
+                  "output": "/"
+                }
+              ]
             },
             "development": {
               "optimization": false,
               "extractLicenses": false,
-              "sourceMap": true
+              "sourceMap": true,
+              "assets": [
+                {
+                  "glob": "**/*",
+                  "input": "public"
+                },
+                {
+                  "glob": "config.json",
+                  "input": "config/development",
+                  "output": "/"
+                }
+              ]
             }
           },
           "defaultConfiguration": "production"

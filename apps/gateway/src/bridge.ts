@@ -19,6 +19,11 @@
  *   POST   /r2/multipart/complete?key=&uploadId=  { parts }         -> 204
  *   DELETE /r2/multipart?key=&uploadId=                             -> 204
  *
+ * E-mail (Cloudflare Email Sending):
+ *   POST   /email/send  { from, to, subject, text, html?, replyTo? } -> { messageId }
+ *   `from` and `replyTo` are an address or { name, email }. A send the
+ *   provider refuses answers 502 with its message.
+ *
  * This module does no authentication. Its two callers decide who may reach it:
  * the container intercept (only the container can) and the local-mode route
  * (shared secret). See index.ts.
@@ -30,6 +35,7 @@ export const BRIDGE_HOST = 'gateway.internal';
 export interface BridgeBindings {
   db: D1Database;
   files: R2Bucket;
+  email: SendEmail;
 }
 
 /** R2 deletes at most this many keys per call. */
@@ -291,6 +297,64 @@ async function handleR2(
   }
 }
 
+// --- E-mail ------------------------------------------------------------------
+
+function address(value: unknown, field: string): string | EmailAddress {
+  if (typeof value === 'string' && value.includes('@')) {
+    return value;
+  }
+  const candidate = value as { name?: unknown; email?: unknown } | null;
+  if (
+    candidate &&
+    typeof candidate.email === 'string' &&
+    candidate.email.includes('@') &&
+    typeof candidate.name === 'string'
+  ) {
+    return { name: candidate.name, email: candidate.email };
+  }
+  throw new BadRequest(`\`${field}\` must be an e-mail address or { name, email }.`);
+}
+
+async function handleEmail(
+  request: Request,
+  route: string,
+  email: SendEmail,
+): Promise<Response | null> {
+  if (route !== 'POST /email/send') {
+    return null;
+  }
+  const body = ((await jsonBody(request)) ?? {}) as Record<string, unknown>;
+  const { subject, text, html, to } = body;
+  if (typeof to !== 'string' || !to.includes('@')) {
+    throw new BadRequest('`to` must be an e-mail address.');
+  }
+  if (typeof subject !== 'string' || subject.trim() === '') {
+    throw new BadRequest('`subject` must be a non-empty string.');
+  }
+  if (typeof text !== 'string' || text === '') {
+    throw new BadRequest('`text` must be a non-empty string.');
+  }
+  if (html !== undefined && typeof html !== 'string') {
+    throw new BadRequest('`html` must be a string.');
+  }
+  const message: EmailMessageBuilder = {
+    from: address(body['from'], 'from'),
+    to,
+    subject,
+    text,
+    ...(html ? { html } : {}),
+    ...(body['replyTo'] !== undefined ? { replyTo: address(body['replyTo'], 'replyTo') } : {}),
+  };
+
+  try {
+    const result = await email.send(message);
+    return json({ messageId: result.messageId });
+  } catch (error) {
+    // Refused by the provider: an unverified sender, a suppressed recipient…
+    return fail(error instanceof Error ? error.message : String(error), 502, 'email');
+  }
+}
+
 // --- entry -------------------------------------------------------------------
 
 /**
@@ -306,7 +370,8 @@ export async function handleBridge(
   try {
     const response =
       (await handleD1(request, route, bindings.db)) ??
-      (await handleR2(request, route, new URL(request.url), bindings.files));
+      (await handleR2(request, route, new URL(request.url), bindings.files)) ??
+      (await handleEmail(request, route, bindings.email));
     return response ?? fail(`Unknown bridge route ${route}.`, 404);
   } catch (error) {
     if (error instanceof BadRequest) {

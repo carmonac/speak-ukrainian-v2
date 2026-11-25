@@ -8,3 +8,6 @@ LOCAL_API_ORIGIN=http://localhost:8080
 # Shared with the API (BRIDGE_SECRET in the root .env). Any value works
 # locally; it only has to match on both sides.
 BRIDGE_SECRET=local-bridge-secret
+
+# Presented by the daily Cron Trigger to the API (CRON_SECRET in the root .env).
+CRON_SECRET=local-cron-secret-0123

@@ -7,6 +7,7 @@ import { toNodeHandler } from 'better-auth/node';
 import { AppModule } from './app.module.js';
 import { AUTH, AUTH_BASE_PATH, type Auth } from './auth/auth.js';
 import { useJsonBodyParser } from './common/body-parser.js';
+import { TRUSTED_PROXY_HOPS } from './common/proxy.js';
 import { securityHeaders } from './common/security-headers.js';
 import type { Env } from './config/configuration.js';
 import { ConfigService } from '@nestjs/config';
@@ -24,8 +25,7 @@ async function bootstrap(): Promise<void> {
   const nodeEnv = config.get('NODE_ENV', { infer: true });
   const port = config.get('PORT', { infer: true });
 
-  // Behind Caddy in production: take the visitor's address from the proxy.
-  app.set('trust proxy', 'loopback, linklocal, uniquelocal');
+  app.set('trust proxy', TRUSTED_PROXY_HOPS);
   app.setGlobalPrefix('api');
   app.enableShutdownHooks();
 

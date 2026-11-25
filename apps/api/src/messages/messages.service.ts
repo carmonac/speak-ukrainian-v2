@@ -1,6 +1,5 @@
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { Cron, CronExpression } from '@nestjs/schedule';
 import type { ConversationSummary, Message, MessageSender } from '@speakukrainian/shared';
 import type { Env } from '../config/configuration.js';
 import { EmailService } from '../email/email.service.js';
@@ -159,8 +158,10 @@ export class MessagesService {
    *
    * One email per student per batch of unread messages: every message covered
    * is stamped `reminder_sent_at`, so the next run skips it.
+   *
+   * Not on a timer here: the gateway's Cron Trigger calls it once a day
+   * through `RemindersController`.
    */
-  @Cron(CronExpression.EVERY_10_MINUTES)
   async sendReminders(): Promise<number> {
     let sent = 0;
     try {
@@ -184,7 +185,7 @@ export class MessagesService {
 
       for (const student of due) {
         // Stamp first: a crash between the two steps then costs one reminder
-        // instead of sending the same one every ten minutes.
+        // instead of sending the same one on every run.
         const stamped = await this.db.query(
           `update messages set reminder_sent_at = ?2
            where student_id = ?1 and sender = 'admin' and read_at is null and reminder_sent_at is null`,

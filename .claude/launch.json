@@ -30,6 +30,24 @@
       "runtimeExecutable": "pnpm",
       "runtimeArgs": ["--filter", "@speakukrainian/gateway", "smoke"],
       "port": 8788
+    },
+    {
+      "name": "admin-preview",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": ["--filter", "@speakukrainian/admin", "preview"],
+      "port": 4201
+    },
+    {
+      "name": "student-preview",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": ["--filter", "@speakukrainian/student", "preview"],
+      "port": 4301
+    },
+    {
+      "name": "gateway-api-container",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": ["--filter", "@speakukrainian/gateway", "smoke:api"],
+      "port": 8789
     }
   ]
 }

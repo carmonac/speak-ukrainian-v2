@@ -6,6 +6,8 @@
     "ng": "ng",
     "dev": "ng serve --port 4300",
     "build": "ng build",
+    "preview": "wrangler dev --port 4301",
+    "deploy": "ng build && wrangler deploy",
     "typecheck": "tsc -p tsconfig.app.json --noEmit",
     "lint": "eslint src --max-warnings 0",
     "test": "echo \"no unit tests yet\""

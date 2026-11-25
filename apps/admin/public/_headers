@@ -1,0 +1,25 @@
+# Response headers for the admin app on Cloudflare Workers static assets.
+# https://developers.cloudflare.com/workers/static-assets/headers/
+
+/*
+  X-Content-Type-Options: nosniff
+  X-Frame-Options: DENY
+  Referrer-Policy: strict-origin-when-cross-origin
+
+# Runtime configuration: never cached, it is what points the app at its API.
+/config.json
+  Cache-Control: no-store
+
+# Build output with a content hash in its name never changes: cache it for a
+# year. Everything else (index.html, the favicon, the Monaco editor) keeps the
+# default, which revalidates on every load.
+/main-*
+  Cache-Control: public, max-age=31536000, immutable
+/chunk-*
+  Cache-Control: public, max-age=31536000, immutable
+/polyfills-*
+  Cache-Control: public, max-age=31536000, immutable
+/styles-*
+  Cache-Control: public, max-age=31536000, immutable
+/media/*
+  Cache-Control: public, max-age=31536000, immutable
