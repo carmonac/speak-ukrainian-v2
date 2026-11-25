@@ -37,3 +37,6 @@ apps/*/h5p/.fetch-tmp/
 .wrangler/
 .dev.vars
 worker-configuration.d.ts
+
+# OpenIdea local state
+.openidea/
