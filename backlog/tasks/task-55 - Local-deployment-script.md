@@ -4,6 +4,7 @@ title: Local deployment script
 status: To Do
 assignee: []
 created_date: '2026-11-24T21:25:21Z'
+updated_date: '2026-11-24T23:46:22Z'
 labels:
   - infra
 milestone: m-5
@@ -29,3 +30,15 @@ Deployments are run from a developer machine, not from GitHub Actions. Deploying
 - [ ] #4 The script refuses to run when wrangler is not authenticated or Docker is not running, with a clear message
 - [ ] #5 It prints the deployed URLs at the end and contains no secrets
 <!-- AC:END -->
+
+## Comments
+
+<!-- COMMENTS:BEGIN -->
+created: 2026-11-24T23:46:22Z
+
+---
+
+From TASK-50: the gateway needs the Worker secret CRON_SECRET (at least 16 characters) before its first deploy; the same value reaches the API container automatically. AUTH_SECRET and H5P_URL_TOKEN_SECRET are needed as Worker secrets too.
+
+---
+<!-- COMMENTS:END -->
