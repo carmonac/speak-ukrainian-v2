@@ -4,7 +4,7 @@ title: CI pipeline
 status: In Progress
 assignee: []
 created_date: '2026-11-24T15:06:44Z'
-updated_date: '2026-11-24T21:25:30Z'
+updated_date: '2026-11-25T00:07:04Z'
 labels:
   - infra
 milestone: m-4
@@ -39,6 +39,14 @@ created: 2026-11-24T21:25:30Z
 ---
 
 Scope narrowed on 2026-11-24: owner decided all deploys are local and hosting moves to Cloudflare. Keep the verify job; remove the images job from .github/workflows/ci.yml.
+
+---
+
+created: 2026-11-25T00:07:04Z
+
+---
+
+From TASK-53: the image-build job is gone from ci.yml; only the verify job remains (format check, lint, typecheck, test, build). The workflow still has not been seen running: it triggers on pull requests and on pushes to main, and the work so far is on the branch m5-cloudflare-migration without a pull request.
 
 ---
 <!-- COMMENTS:END -->

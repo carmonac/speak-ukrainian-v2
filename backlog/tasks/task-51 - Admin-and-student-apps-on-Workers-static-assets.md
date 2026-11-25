@@ -1,11 +1,11 @@
 ---
 id: TASK-51
 title: Admin and student apps on Workers static assets
-status: In Progress
+status: Done
 assignee:
   - '@claude'
 created_date: '2026-11-24T21:25:20Z'
-updated_date: '2026-11-24T23:48:30Z'
+updated_date: '2026-11-25T00:25:41Z'
 labels:
   - admin
   - student
@@ -24,7 +24,7 @@ The two Angular SPAs are served by nginx containers that write config.json at st
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Each app has a wrangler configuration that deploys its production build to its custom domain
+- [x] #1 Each app has a wrangler configuration that deploys its production build to its custom domain
 - [x] #2 Deep links such as /courses/123 load the app instead of a 404
 - [x] #3 config.json is served with no-store and points at https://speakukrainian.org/api; hashed assets are immutable
 - [x] #4 Responses carry nosniff, frame-deny and referrer-policy headers as the nginx setup did
@@ -52,4 +52,12 @@ Verified with wrangler dev over the production builds, both apps: / and a deep l
 Not verified: the real deploy and the custom domains (criterion 1), and the headers as served by Cloudflare rather than the local simulator.
 Known difference from nginx: a request for a file that does not exist (e.g. a chunk from a previous deploy) now gets index.html with 200 instead of 404.
 Left for TASK-53: docker/spa.Dockerfile, spa-config.sh and spa.nginx.conf are now unused.
+
+2026-11-25 (production): both apps deployed to admin.speakukrainian.org and student.speakukrainian.org. From Cloudflare itself: / and a deep link answer 200 with the app; config.json is no-store with the production URLs; the main bundle is immutable for a year; nosniff, X-Frame-Options DENY and the referrer policy are on every response; favicon.svg is served.
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+The admin and student Angular apps are served by Cloudflare Workers static assets on their own domains, with a _headers file for security and caching and a config.json chosen by the build configuration. Verified locally and on the deployed sites.
+<!-- SECTION:FINAL_SUMMARY:END -->

@@ -1,11 +1,11 @@
 ---
 id: TASK-52
 title: API image for Cloudflare Containers
-status: In Progress
+status: Done
 assignee:
   - '@claude'
 created_date: '2026-11-24T21:25:20Z'
-updated_date: '2026-11-24T23:57:07Z'
+updated_date: '2026-11-25T00:25:42Z'
 labels:
   - api
   - infra
@@ -26,7 +26,7 @@ apps/api/Dockerfile was written for a VPS behind Caddy. In Cloudflare Containers
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
 - [x] #1 The image builds with local Docker and the API serves the public site and /api/health through the gateway
-- [ ] #2 Client IP and protocol are correct behind Cloudflare, so visitor tracking and secure URLs work
+- [x] #2 Client IP and protocol are correct behind Cloudflare, so visitor tracking and secure URLs work
 - [x] #3 CORS accepts exactly the admin and student origins
 - [x] #4 H5P upload and editing work after the container has slept and restarted with an empty disk
 - [x] #5 A cold start serves the first request without errors
@@ -53,4 +53,12 @@ apps/api/Dockerfile was written for a VPS behind Caddy. In Cloudflare Containers
 
 Verified with the real image in a local container behind the gateway (NODE_ENV=production): /api/health ok with database ok; the public site renders the seeded main page in Spanish for Accept-Language: es and an unknown path answers 404; CORS preflight allows the admin and student origins and gives no allow-origin header to another origin; the first-run admin exists and signs in, /api/admin/account and the dashboard answer; a 99 MB H5P package uploads in 1.8 s and plays with correct ranges; after killing the container the next request starts a fresh one in 1.8 s with an empty temp directory (a marker file written before the kill is gone), the same session token still works, content uploaded before the kill still plays, and upload/play/delete work again; the editor model, params and ajax endpoints answer, and saving an edit and creating content from the editor work on a freshly restarted container. The process runs as the unprivileged nodeapp user. Repo-wide lint, typecheck, test (673 API tests) and build pass.
 Not verified: anything on Cloudflare itself - the client address and protocol as delivered by the real edge (locally the address is loopback), cold start and memory on a basic instance, and the secrets. Left for the first deploy (TASK-55, TASK-56).
+
+2026-11-25 (production): the real image runs as a Cloudflare Container (instance type basic) behind the gateway. /api/health ok with database ok; the public site renders; CORS allows exactly the two app origins; the bridge paths answer 404 from the internet and the cron endpoint 403 without its secret; the first-run admin signs in. The session row written by that sign-in holds this machine's public address, so the client address reaches the API correctly through Cloudflare; plain http is redirected to https at the edge. The health wait after the first deploy completed within the script's window; a cold start after an idle period has not been timed yet.
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+The API image runs in Cloudflare Containers behind the gateway: one trusted proxy hop, production URLs and CORS from the gateway vars, an explicit container size, and no state on the container disk. Verified with the real image locally (including H5P upload and editing after restarts) and in production (health, site, CORS, admin sign-in, real client address). Also fixed: paid checkout without Stripe is refused in production instead of enrolling for free.
+<!-- SECTION:FINAL_SUMMARY:END -->
