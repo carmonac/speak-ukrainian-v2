@@ -5,7 +5,7 @@ status: Done
 assignee:
   - '@claude'
 created_date: '2026-11-24T21:25:21Z'
-updated_date: '2026-11-25T00:25:41Z'
+updated_date: '2026-11-25T09:15:57Z'
 labels:
   - infra
 milestone: m-5
@@ -62,6 +62,8 @@ Verified without deploying:
 Not verified: a real run - the --secrets-file path on a Worker that does not exist yet, the image push, the health wait and the final list of URLs. That is the first production deploy and needs the owner to name the administrator address.
 
 2026-11-25: first real run, `pnpm deploy:prod --admin-email=<the address the owner chose>`, exit 0. Preflight created the four secrets through --secrets-file on a Worker that did not exist yet; lint, typecheck, test and build ran; migrations (none pending); the gateway uploaded with the API image and its custom domain; admin (142 files) and student (35 files) deployed to their custom domains; the health check got {"status":"ok","database":"ok"}; the three URLs were printed. `wrangler secret list` shows ADMIN_EMAIL, AUTH_SECRET, CRON_SECRET and H5P_URL_TOKEN_SECRET; no temporary secrets file was left behind. Not exercised for real: a redeploy with secrets already present, and a single-target real deploy (both only as dry runs).
+
+2026-11-25: second real run, from main with everything committed: preflight reported "Secrets: all present" and left them untouched, no migrations pending, gateway and both apps redeployed, health ok, exit 0.
 <!-- SECTION:NOTES:END -->
 
 ## Comments

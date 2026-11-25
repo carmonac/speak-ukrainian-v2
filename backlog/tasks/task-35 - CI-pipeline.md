@@ -4,7 +4,7 @@ title: CI pipeline
 status: In Progress
 assignee: []
 created_date: '2026-11-24T15:06:44Z'
-updated_date: '2026-11-25T00:07:04Z'
+updated_date: '2026-11-25T09:15:57Z'
 labels:
   - infra
 milestone: m-4
@@ -47,6 +47,14 @@ created: 2026-11-25T00:07:04Z
 ---
 
 From TASK-53: the image-build job is gone from ci.yml; only the verify job remains (format check, lint, typecheck, test, build). The workflow still has not been seen running: it triggers on pull requests and on pushes to main, and the work so far is on the branch m5-cloudflare-migration without a pull request.
+
+---
+
+created: 2026-11-25T09:15:57Z
+
+---
+
+The workflow ran on the push to main of 2026-11-25 (run 45583279036) and passed in 1m32s: format check, lint, typecheck, test, build. It has not been seen running on a pull request yet.
 
 ---
 <!-- COMMENTS:END -->

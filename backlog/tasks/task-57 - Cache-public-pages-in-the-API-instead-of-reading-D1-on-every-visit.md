@@ -5,7 +5,7 @@ status: Done
 assignee:
   - '@claude'
 created_date: '2026-11-25T08:25:49Z'
-updated_date: '2026-11-25T09:10:17Z'
+updated_date: '2026-11-25T09:15:57Z'
 labels:
   - api
   - performance
@@ -61,6 +61,8 @@ Verification:
 - Live, API against wrangler dev and local D1, with markers in the gateway log: 0 bridge queries during 25 consecutive visits to /, 1 query for 10 visits to an unknown path; editing a text of the main page through the admin API showed on the next public load; a created page answered 200 and after deletion 404 on the next request; the main page was restored afterwards.
 - Repo-wide lint, typecheck, test (690 API tests), build and format:check pass.
 Not done: not deployed to production yet (needs `pnpm deploy:prod gateway`). Out of scope and unchanged: each visit by a browser still makes one D1 write to count the visitor (insert into page_views, not awaited); it could be skipped for visitors already counted today.
+
+2026-11-25: deployed to production with `pnpm deploy:prod` from main (commit c6fec4f). After the deploy the main page answers 200 in 0.16-0.25 s from this machine.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary
