@@ -128,7 +128,11 @@ the same release), because the old container keeps serving until the new one
 starts.
 
 The first deploy of the gateway takes several minutes before the container
-answers; later ones replace it in seconds.
+answers. On later ones the running container is replaced on the first request
+after the deploy: Cloudflare keeps a running container on the image it started
+with, so the gateway remembers which deploy started it and, when that is not
+the current one, stops it and starts the new image. That request waits a few
+seconds, as after a cold start.
 
 ### First deploy: the administrator
 

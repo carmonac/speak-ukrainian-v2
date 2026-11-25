@@ -24,6 +24,12 @@ const INACTIVITY_TIMEOUT_MS = 30 * 60 * 1000;
  */
 const INSTANCE_TYPE = 'basic';
 
+/** Storage key: the Worker version that started the running container. */
+const STARTED_BY_KEY = 'containerStartedBy';
+const SIGTERM = 15;
+/** How long a container being replaced gets to finish what it is doing. */
+const STOP_GRACE_MS = 5000;
+
 /**
  * Owns the single API container.
  *
@@ -35,6 +41,8 @@ const INSTANCE_TYPE = 'basic';
 export class ApiContainer extends DurableObject<Env> {
   private starting: Promise<void> | undefined;
   private bridgeAttached = false;
+  /** Whether the running container is known to belong to this version of the Worker. */
+  private versionChecked = false;
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
@@ -86,7 +94,35 @@ export class ApiContainer extends DurableObject<Env> {
     }
   }
 
+  /**
+   * Stops a container that an earlier deploy started.
+   *
+   * A deploy restarts this object but not its container: a running one keeps
+   * the image and the environment it was started with, and would go on serving
+   * the previous release until it happened to fall asleep. The version of the
+   * Worker that started it is kept in storage; when it is not this version,
+   * the container is stopped here and `ensureRunning` starts a new one from
+   * the image this version was deployed with.
+   */
+  private async retireOutdated(container: Container): Promise<void> {
+    if (this.versionChecked || !container.running) return;
+    const startedBy = await this.ctx.storage.get<string>(STARTED_BY_KEY);
+    if (startedBy !== this.env.CF_VERSION_METADATA.id) {
+      console.warn('Replacing the API container started by an earlier deploy');
+      // Ask first, so requests in flight can finish; then insist.
+      container.signal(SIGTERM);
+      await Promise.race([
+        container.monitor().catch(() => undefined),
+        scheduler.wait(STOP_GRACE_MS),
+      ]);
+      if (container.running) await container.destroy();
+    }
+    this.versionChecked = true;
+  }
+
   private async ensureRunning(container: Container): Promise<void> {
+    await this.retireOutdated(container);
+
     // The bridge host does not exist in DNS; only requests from inside this
     // container ever reach the handler.
     //
@@ -102,6 +138,8 @@ export class ApiContainer extends DurableObject<Env> {
     }
     if (container.running) return;
 
+    await this.ctx.storage.put(STARTED_BY_KEY, this.env.CF_VERSION_METADATA.id);
+    this.versionChecked = true;
     container.start({
       image: container.images.base,
       instance: INSTANCE_TYPE,
