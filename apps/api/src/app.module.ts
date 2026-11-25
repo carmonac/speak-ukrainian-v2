@@ -11,6 +11,7 @@ import { CoursesModule } from './courses/courses.module.js';
 import { DashboardController } from './dashboard/dashboard.controller.js';
 import { EmailModule } from './email/email.module.js';
 import { H5pUrlTokenGuard } from './h5p/h5p-url-token.guard.js';
+import { FilesModule } from './files/files.module.js';
 import { H5pModule } from './h5p/h5p.module.js';
 import { HealthController } from './health/health.controller.js';
 import { ClockModule } from './infra/clock/clock.module.js';
@@ -46,6 +47,7 @@ import { UsersModule } from './users/users.module.js';
     EmailModule,
     MessagesModule,
     H5pModule,
+    FilesModule,
     PagesModule,
     CoursesModule,
     PaymentsModule,

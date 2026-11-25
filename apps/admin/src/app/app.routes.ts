@@ -59,6 +59,10 @@ export const routes: Routes = [
         loadComponent: () => import('./features/account/account-page').then((m) => m.AccountPage),
       },
       {
+        path: 'storage',
+        loadComponent: () => import('./features/storage/storage-page').then((m) => m.StoragePage),
+      },
+      {
         path: 'users',
         loadComponent: () => import('./features/users/users-page').then((m) => m.UsersPage),
       },

@@ -2,8 +2,10 @@ import { createHash } from 'node:crypto';
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import type { NextFunction, Request, Response } from 'express';
-import { RESERVED_PAGE_PATH_PREFIXES } from '@speakukrainian/shared';
+import { RESERVED_PAGE_PATH_PREFIXES, SITE_FILES_PATH } from '@speakukrainian/shared';
 import type { Env } from '../config/configuration.js';
+import { FilesService, SITE_FILE_CACHE_CONTROL } from '../files/files.service.js';
+import { parseSiteFilePath } from '../files/site-files.js';
 import { DatabaseService } from '../infra/db/database.service.js';
 import { FAVICON_ICO, FAVICON_SVG } from './favicon.js';
 import { PageCache } from './page-cache.js';
@@ -31,6 +33,7 @@ export class SiteService {
     private readonly pages: PageCache,
     private readonly renderer: SiteRenderer,
     private readonly db: DatabaseService,
+    private readonly files: FilesService,
     config: ConfigService<Env, true>,
   ) {
     this.salt = config.get('H5P_URL_TOKEN_SECRET', { infer: true });
@@ -47,6 +50,13 @@ export class SiteService {
       return;
     }
     if (
+      (req.method === 'GET' || req.method === 'HEAD') &&
+      req.path.startsWith(`${SITE_FILES_PATH}/`)
+    ) {
+      this.serveFile(req, res).catch(next);
+      return;
+    }
+    if (
       (req.method !== 'GET' && req.method !== 'HEAD') ||
       RESERVED_PAGE_PATH_PREFIXES.some((p) => req.path === p || req.path.startsWith(`${p}/`))
     ) {
@@ -55,6 +65,49 @@ export class SiteService {
     }
     this.serve(req, res).catch(next);
   };
+
+  /**
+   * A file uploaded for the pages: `/files/<id>/<name>`. Public, like the
+   * pages that use it. Only ever reads under the site-files prefix of the
+   * bucket; see `parseSiteFilePath`.
+   */
+  private async serveFile(req: Request, res: Response): Promise<void> {
+    const wanted = parseSiteFilePath(req.path);
+    const file = wanted ? await this.files.open(wanted.id, wanted.name, req.headers.range) : null;
+    if (!file) {
+      res.status(404).type('text/plain').send('Not found');
+      return;
+    }
+
+    res.setHeader('Content-Type', file.contentType);
+    res.setHeader('Cache-Control', SITE_FILE_CACHE_CONTROL);
+    res.setHeader('Accept-Ranges', 'bytes');
+    // Public files, and meant to be usable from anywhere: the page preview
+    // runs on an origin of its own (see `PreviewController`) and must load
+    // them like the real page does, fonts included.
+    res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    if (file.range) {
+      const { start, end } = file.range;
+      res.status(206);
+      res.setHeader('Content-Range', `bytes ${start}-${end}/${file.sizeBytes}`);
+      res.setHeader('Content-Length', String(end - start + 1));
+    } else {
+      res.setHeader('Content-Length', String(file.sizeBytes));
+    }
+
+    if (req.method === 'HEAD') {
+      file.stream.destroy();
+      res.end();
+      return;
+    }
+    file.stream.on('error', (error) => {
+      this.logger.warn(`A site file stopped mid-stream: ${String(error)}`);
+      res.destroy(error);
+    });
+    res.on('close', () => file.stream.destroy());
+    file.stream.pipe(res);
+  }
 
   private async serve(req: Request, res: Response): Promise<void> {
     // `/about/` and `/About` are the same page as `/about`.

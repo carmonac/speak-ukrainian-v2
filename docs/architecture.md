@@ -121,8 +121,10 @@ What is different from a classic SQL connection, and shapes the API's code
 **Files** are in one private **R2** bucket, reached through the bridge by
 `infra/storage/storage.service.ts`. No access keys exist for it and nothing in
 it is public: every byte a browser receives is streamed through the API,
-which decides who may read it. Streams are uploaded in 8 MiB parts. See
-[h5p.md](h5p.md) for the layout.
+which decides who may read it. Streams are uploaded in 8 MiB parts. Exercises
+are under `h5p/` (see [h5p.md](h5p.md) for the layout); the files uploaded for
+the site's pages are under `site/files/`, and those the API serves to anyone
+at `/files/<id>/<name>`.
 
 ## Accounts and access
 
@@ -155,7 +157,8 @@ the API (`apps/api/src/auth/auth.ts`) and stored in D1. Its routes are under
 | Module           | Routes                                                                      | Notes                                                                                                                |
 | ---------------- | --------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
 | `auth`           | `/api/auth/*`, `/api/admin/account`                                         | better-auth, the guards, the first-run administrator.                                                                |
-| `pages` + `site` | `/api/admin/pages/*`, `GET /*`                                              | CRUD and preview; `SiteRenderer` compiles templates, `SiteService` serves them and counts visitors.                  |
+| `pages` + `site` | `/api/admin/pages/*`, `/api/preview/:token`, `GET /*`                       | CRUD and preview; `SiteRenderer` compiles templates, `SiteService` serves them and counts visitors.                  |
+| `files`          | `/api/admin/files`, `GET /files/:id/:name`                                  | Files for the pages: upload, list and delete for the administrator; `SiteService` serves them to everyone.           |
 | `courses`        | `/api/admin/courses/*`, `/api/admin/lessons/:id/exercise`, `/api/courses/*` | The whole course tree is saved in one batch. The public routes expose only published courses and only their outline. |
 | `h5p`            | `/api/h5p/*`                                                                | See [h5p.md](h5p.md).                                                                                                |
 | `payments`       | `/api/me/checkout`, `/api/payments/stripe/webhook`                          | Enrollment is created by the signed webhook, never by the browser returning from Stripe. Idempotent.                 |
@@ -234,7 +237,18 @@ the build configuration: `ng serve` copies `config/development/config.json`
 
 - Page templates are written by the single trusted administrator and are
   rendered as-is; text values are HTML-escaped unless the template opts out
-  with triple braces. The preview in the panel is shown in a sandboxed iframe.
+  with triple braces.
+- The page preview is unsaved, unreviewed markup, so it never runs on the
+  panel's origin. The panel asks for a link (`POST /api/admin/pages/preview-link`),
+  the API keeps the rendered HTML in memory under a random token for 15
+  minutes, and the new tab loads it from the public site with
+  `Content-Security-Policy: sandbox allow-scripts …` and no `allow-same-origin`:
+  its scripts run on an origin of their own, without storage, cookies or a way
+  back to the window that opened it.
+- Site files share the private bucket with the exercises but live under their
+  own prefix, `site/files/<id>/<name>`. The public route accepts exactly that
+  shape (a UUID and one file name) and the administrator's list and delete
+  routes work only inside that prefix, so neither can reach H5P content.
 - Exercises are paid content. The player model is served only to the
   administrator or to an enrolled student, and an exercise's files are served
   through URLs carrying a signed, expiring token bound to that exercise.

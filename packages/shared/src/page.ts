@@ -10,6 +10,7 @@ export const RESERVED_PAGE_PATH_PREFIXES = [
   '/healthz',
   '/favicon.ico',
   '/favicon.svg',
+  '/files',
   '/robots.txt',
 ];
 

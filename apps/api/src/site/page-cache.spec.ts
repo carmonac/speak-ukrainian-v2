@@ -7,6 +7,7 @@ import { createTestDatabase, type TestDatabase } from '../infra/db/sqlite.test-d
 import { PagesController } from '../pages/pages.controller.js';
 import { PagesService } from '../pages/pages.service.js';
 import { MAX_CACHED_PAGES, MISSING_PAGE_TTL_MS, PAGE_TTL_MS, PageCache } from './page-cache.js';
+import { PreviewStore } from './preview.js';
 import { SiteRenderer } from './site.renderer.js';
 
 class FakeClock implements Clock {
@@ -193,7 +194,13 @@ describe('public pages through the cache', () => {
     pages = new PagesService(t.db);
     cache = new PageCache(pages, clock);
     const config = { get: () => 'http://localhost' } as unknown as ConfigService<Env, true>;
-    controller = new PagesController(pages, new SiteRenderer(config), cache);
+    controller = new PagesController(
+      pages,
+      new SiteRenderer(config),
+      cache,
+      new PreviewStore(clock),
+      config,
+    );
   });
 
   it('reads the main page from the database once, then not at all', async () => {

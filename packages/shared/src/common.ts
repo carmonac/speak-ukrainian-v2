@@ -45,6 +45,8 @@ export const STORAGE_PREFIXES = {
   h5pContent: 'h5p/content',
   h5pLibraries: 'h5p/libraries',
   h5pTemp: 'h5p/temp',
+  /** Files uploaded for the site's pages. The only prefix that is served publicly. */
+  siteFiles: 'site/files',
 } as const;
 
 export const userRoleSchema = z.enum(['student', 'admin']);

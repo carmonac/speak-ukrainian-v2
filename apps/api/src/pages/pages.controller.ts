@@ -9,6 +9,7 @@ import {
   Post,
   Put,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import {
   idSchema,
@@ -21,7 +22,10 @@ import {
 } from '@speakukrainian/shared';
 import { Roles } from '../auth/roles.decorator.js';
 import { ZodValidationPipe } from '../common/zod-validation.pipe.js';
+import type { Env } from '../config/configuration.js';
 import { PageCache } from '../site/page-cache.js';
+import { PREVIEW_ROUTE } from '../site/preview.controller.js';
+import { PreviewStore, withPreviewBanner } from '../site/preview.js';
 import { SiteRenderer } from '../site/site.renderer.js';
 import { PagesService } from './pages.service.js';
 
@@ -30,11 +34,17 @@ import { PagesService } from './pages.service.js';
 @Roles('admin')
 @Controller('admin/pages')
 export class PagesController {
+  private readonly siteUrl: string;
+
   constructor(
     private readonly pages: PagesService,
     private readonly renderer: SiteRenderer,
     private readonly cache: PageCache,
-  ) {}
+    private readonly previews: PreviewStore,
+    config: ConfigService<Env, true>,
+  ) {
+    this.siteUrl = config.get('PUBLIC_SITE_URL', { infer: true }).replace(/\/$/, '');
+  }
 
   @Get()
   list(): Promise<PageSummary[]> {
@@ -46,18 +56,23 @@ export class PagesController {
     return this.pages.findMain();
   }
 
-  /** Renders unsaved content the way the public site would, for the editor's preview. */
-  @Post('preview')
+  /**
+   * Renders unsaved content and returns a link that shows it, with a banner,
+   * in a tab of its own. Nothing is stored in the database; the link works for
+   * a few minutes. It is on the public site's origin, not the panel's, and is
+   * served sandboxed: see `PreviewController`.
+   */
+  @Post('preview-link')
   @HttpCode(HttpStatus.OK)
-  preview(@Body(new ZodValidationPipe(previewPageSchema)) body: PreviewPageInput): {
-    html: string;
+  previewLink(@Body(new ZodValidationPipe(previewPageSchema)) body: PreviewPageInput): {
+    url: string;
   } {
-    return {
-      html: this.renderer.renderSafely(
-        { title: body.title, path: '/preview', content: body.content, texts: body.texts },
-        [body.locale],
-      ).html,
-    };
+    const { html } = this.renderer.renderSafely(
+      { title: body.title, path: '/preview', content: body.content, texts: body.texts },
+      [body.locale],
+    );
+    const token = this.previews.add(withPreviewBanner(html));
+    return { url: `${this.siteUrl}/api/${PREVIEW_ROUTE}/${token}` };
   }
 
   @Get(':id')

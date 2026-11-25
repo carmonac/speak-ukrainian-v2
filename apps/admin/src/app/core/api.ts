@@ -13,6 +13,7 @@ import type {
   SaveCourseInput,
   SavePageInput,
   SendEmailInput,
+  SiteFile,
   UpdateUserInput,
   UserDetail,
   UserSummary,
@@ -47,8 +48,20 @@ export class AdminApi {
   deletePage(id: string): Observable<void> {
     return this.api.delete(`/admin/pages/${id}`);
   }
-  previewPage(input: Partial<PreviewPageInput>): Observable<{ html: string }> {
-    return this.api.post('/admin/pages/preview', input);
+  /** A short-lived link that shows unsaved content, to open in a tab of its own. */
+  previewLink(input: Partial<PreviewPageInput>): Observable<{ url: string }> {
+    return this.api.post('/admin/pages/preview-link', input);
+  }
+
+  // Site files
+  uploadFile(file: File): Observable<SiteFile> {
+    return this.api.upload('/admin/files', file);
+  }
+  files(query: { limit: number; offset: number }): Observable<Page<SiteFile>> {
+    return this.api.get('/admin/files', { limit: query.limit, offset: query.offset });
+  }
+  deleteFile(id: string): Observable<void> {
+    return this.api.delete(`/admin/files/${id}`);
   }
 
   // Courses

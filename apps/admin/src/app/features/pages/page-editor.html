@@ -4,7 +4,20 @@
     @if (publicUrl(); as url) {
       <a nz-button [href]="url" target="_blank" rel="noopener">View page</a>
     }
-    <button nz-button (click)="openPreview()" [disabled]="loading()">
+    <nz-select
+      class="locale"
+      aria-label="Preview language"
+      nz-tooltip
+      nzTooltipTitle="Language of the preview"
+      nzShowSearch
+      [ngModel]="previewLocale()"
+      (ngModelChange)="previewLocale.set($event)"
+    >
+      @for (locale of locales; track locale.code) {
+        <nz-option [nzValue]="locale.code" [nzLabel]="locale.code + ' — ' + locale.name" />
+      }
+    </nz-select>
+    <button nz-button type="button" (click)="openPreview()" [nzLoading]="previewLoading()" [disabled]="loading()">
       <nz-icon nzType="eye" />
       Preview
     </button>
@@ -148,6 +161,45 @@
       </button>
     </nz-card>
 
+    <nz-card nzTitle="Files" class="block">
+      <p class="muted">
+        Upload images, documents or any other file the page needs, then copy its URL into the content, for example
+        <code>&lt;img src="…" /&gt;</code>. Up to {{ maxFileSize }} per file. Every uploaded file is listed in
+        <a routerLink="/storage">Storage</a>.
+      </p>
+
+      <input #fileInput type="file" multiple hidden (change)="onFilesChosen($event)" />
+      <button nz-button type="button" [nzLoading]="uploading() > 0" (click)="fileInput.click()">
+        <nz-icon nzType="upload" />
+        Upload files
+      </button>
+
+      @if (uploaded().length > 0) {
+        <ul class="files" aria-label="Uploaded files">
+          @for (file of uploaded(); track file.id) {
+            <li class="file">
+              <div class="file-name">
+                {{ file.name }} <span class="muted">({{ size(file.sizeBytes) }})</span>
+              </div>
+              <div class="file-url">
+                <input
+                  nz-input
+                  readonly
+                  [value]="file.url"
+                  [attr.aria-label]="'URL of ' + file.name"
+                  (focus)="$any($event.target).select()"
+                />
+                <button nz-button type="button" (click)="copyUrl(file.url)">
+                  <nz-icon nzType="copy" />
+                  Copy URL
+                </button>
+              </div>
+            </li>
+          }
+        </ul>
+      }
+    </nz-card>
+
     <nz-card nzTitle="Content" class="block">
       <p class="muted">
         HTML with Handlebars. Besides your texts you can use <code>{{ '{' + '{ title }' + '}' }}</code>,
@@ -158,30 +210,3 @@
     </nz-card>
   </form>
 </nz-spin>
-
-<nz-modal
-  [nzVisible]="previewOpen()"
-  nzTitle="Preview"
-  nzWidth="90vw"
-  [nzFooter]="null"
-  [nzBodyStyle]="{ padding: '0' }"
-  (nzOnCancel)="previewOpen.set(false)"
->
-  <ng-container *nzModalContent>
-    <div class="preview-bar">
-      <span>Language</span>
-      <nz-select
-        class="locale"
-        [ngModel]="previewLocale()"
-        (ngModelChange)="previewLocale.set($event); renderPreview()"
-      >
-        @for (locale of locales; track locale.code) {
-          <nz-option [nzValue]="locale.code" [nzLabel]="locale.code + ' — ' + locale.name" />
-        }
-      </nz-select>
-    </div>
-    <nz-spin [nzSpinning]="previewLoading()">
-      <iframe class="preview" title="Page preview" sandbox="" [srcdoc]="previewHtml()"></iframe>
-    </nz-spin>
-  </ng-container>
-</nz-modal>

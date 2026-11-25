@@ -2,6 +2,7 @@ export * from './common.js';
 export * from './http.js';
 export * from './h5p.js';
 export * from './page.js';
+export * from './site-file.js';
 export * from './course.js';
 export * from './user.js';
 export * from './message.js';

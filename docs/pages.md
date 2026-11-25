@@ -62,11 +62,36 @@ The standard built-in helpers work: `{{#if promo}}…{{/if}}`,
 `{{#unless}}`, `{{#each}}`, `{{!-- comments --}}`. A text that has no
 translation at all is an empty string, so `{{#if text}}` can hide a block.
 
+## Files
+
+The **Files** section of the editor uploads images, documents, stylesheets or
+any other file a page needs (up to 25 MB each, several at once). Each upload
+gets a public URL, shown with a **Copy URL** button, to paste into the content:
+
+```handlebars
+<img src='https://speakukrainian.org/files/3f2b…/logo.png' alt='{{logo_alt}}' />
+```
+
+- Every upload gets an address of its own, `/files/<id>/<name>`: uploading
+  another file with the same name never replaces the first one. To change a
+  file, upload the new one and update the URL in the page.
+- Files are public, like the pages, and browsers keep them for a year.
+- **Storage**, in the side menu, lists every uploaded file. From there a file
+  can be opened, inspected (URL, name, size, upload date) or deleted. Deleting
+  is permanent: pages that still link to the file stop showing it.
+
 ## Preview and errors
 
-**Preview** renders the unsaved form in a chosen language. If a template has a
-syntax error the public page shows a plain error page with the message instead
-of failing, and so does the preview.
+**Preview** opens the unsaved form in a new browser tab, rendered in the
+language chosen next to the button. A bar on top of the tab says it is a
+preview; the bar is drawn over the page, so the layout underneath is exactly
+what will be published, and it is never part of the saved page. Nothing is
+saved by previewing, and the link stops working after 15 minutes: press
+**Preview** again for a fresh one. If the browser blocks the new tab, allow
+pop-ups for the control panel.
+
+If a template has a syntax error the public page shows a plain error page with
+the message instead of failing, and so does the preview.
 
 ## When a change becomes visible
 

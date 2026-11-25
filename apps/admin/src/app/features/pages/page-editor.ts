@@ -1,8 +1,7 @@
 import { Component, computed, effect, inject, input, signal } from '@angular/core';
 import { TextFieldModule } from '@angular/cdk/text-field';
 import { FormsModule } from '@angular/forms';
-import { DomSanitizer, type SafeHtml } from '@angular/platform-browser';
-import { Router } from '@angular/router';
+import { Router, RouterLink } from '@angular/router';
 import { firstValueFrom } from 'rxjs';
 import { NzAlertModule } from 'ng-zorro-antd/alert';
 import { NzButtonModule } from 'ng-zorro-antd/button';
@@ -11,18 +10,22 @@ import { NzFormModule } from 'ng-zorro-antd/form';
 import { NzIconModule } from 'ng-zorro-antd/icon';
 import { NzInputModule } from 'ng-zorro-antd/input';
 import { NzMessageService } from 'ng-zorro-antd/message';
-import { NzModalModule } from 'ng-zorro-antd/modal';
 import { NzPopconfirmModule } from 'ng-zorro-antd/popconfirm';
 import { NzSelectModule } from 'ng-zorro-antd/select';
 import { NzSpinModule } from 'ng-zorro-antd/spin';
+import { NzTooltipModule } from 'ng-zorro-antd/tooltip';
 import {
   COMMON_LOCALES,
+  MAX_SITE_FILE_BYTES,
+  formatMaxSiteFileSize,
   savePageSchema,
   type PageDetail,
   type SavePageInput,
+  type SiteFile,
 } from '@speakukrainian/shared';
 import { AdminApi } from '../../core/api';
 import { CodeEditor } from '../../core/code-editor';
+import { copyText, formatFileSize } from '../../core/files';
 import { errorMessage } from '../../core/http';
 import { NavStore } from '../../core/nav.store';
 import { runtimeConfig } from '../../core/runtime-config';
@@ -62,6 +65,7 @@ const NEW_PAGE_TEMPLATE = `<!doctype html>
   selector: 'app-page-editor',
   imports: [
     FormsModule,
+    RouterLink,
     TextFieldModule,
     CodeEditor,
     NzCardModule,
@@ -72,7 +76,7 @@ const NEW_PAGE_TEMPLATE = `<!doctype html>
     NzIconModule,
     NzAlertModule,
     NzSpinModule,
-    NzModalModule,
+    NzTooltipModule,
     NzPopconfirmModule,
   ],
   templateUrl: './page-editor.html',
@@ -83,7 +87,6 @@ export class PageEditor {
   private readonly nav = inject(NavStore);
   private readonly router = inject(Router);
   private readonly message = inject(NzMessageService);
-  private readonly sanitizer = inject(DomSanitizer);
 
   /** Route data: which page this screen edits. */
   readonly mode = input.required<'main' | 'new' | 'edit'>();
@@ -97,10 +100,14 @@ export class PageEditor {
   protected readonly form = signal<PageForm>({ title: '', path: '', texts: [] });
   protected readonly content = signal('');
 
-  protected readonly previewOpen = signal(false);
   protected readonly previewLocale = signal('en');
-  protected readonly previewHtml = signal<SafeHtml | null>(null);
   protected readonly previewLoading = signal(false);
+
+  /** Files uploaded from this screen since it was opened, newest first. */
+  protected readonly uploaded = signal<SiteFile[]>([]);
+  protected readonly uploading = signal(0);
+  protected readonly maxFileSize = formatMaxSiteFileSize();
+  protected readonly size = formatFileSize;
 
   protected readonly heading = computed(() => {
     switch (this.mode()) {
@@ -256,17 +263,33 @@ export class PageEditor {
     }
   }
 
-  protected openPreview(): void {
-    this.previewOpen.set(true);
-    void this.renderPreview();
-  }
+  /**
+   * Opens the unsaved form, rendered, in a new tab.
+   *
+   * The tab is opened first, inside the click, because a browser blocks a tab
+   * opened after an asynchronous call as a pop-up. It then goes to a link on
+   * the public site, where the page runs sandboxed on an origin of its own:
+   * its scripts work as they will once saved, and cannot reach this panel.
+   */
+  protected async openPreview(): Promise<void> {
+    if (this.previewLoading()) {
+      return;
+    }
+    const tab = window.open('', '_blank');
+    if (!tab) {
+      this.message.error('The browser blocked the preview tab. Allow pop-ups for this panel.');
+      return;
+    }
+    // Cuts the tab's way back to this window before any page loads in it.
+    tab.opener = null;
+    tab.document.title = 'Preview';
+    tab.document.body.textContent = 'Rendering the preview…';
 
-  protected async renderPreview(): Promise<void> {
     const form = this.form();
     this.previewLoading.set(true);
     try {
-      const { html } = await firstValueFrom(
-        this.api.previewPage({
+      const { url } = await firstValueFrom(
+        this.api.previewLink({
           title: form.title,
           content: this.content(),
           locale: this.previewLocale(),
@@ -278,14 +301,44 @@ export class PageEditor {
             })),
         }),
       );
-      // Shown in a sandboxed iframe (no scripts, no same-origin), so the
-      // administrator's own markup cannot act on the panel.
-      this.previewHtml.set(this.sanitizer.bypassSecurityTrustHtml(html));
+      tab.location.replace(url);
     } catch (error) {
-      this.previewHtml.set(null);
+      tab.close();
       this.message.error(errorMessage(error, 'The preview could not be rendered.'));
     } finally {
       this.previewLoading.set(false);
+    }
+  }
+
+  /** Uploads the chosen files one after another; each gets a public URL. */
+  protected async onFilesChosen(event: Event): Promise<void> {
+    const input = event.target as HTMLInputElement;
+    const files = [...(input.files ?? [])];
+    // So choosing the same file again fires the event again.
+    input.value = '';
+
+    for (const file of files) {
+      if (file.size > MAX_SITE_FILE_BYTES) {
+        this.message.error(`${file.name} is larger than ${this.maxFileSize} and was not uploaded.`);
+        continue;
+      }
+      this.uploading.update((n) => n + 1);
+      try {
+        const saved = await firstValueFrom(this.api.uploadFile(file));
+        this.uploaded.update((list) => [saved, ...list]);
+      } catch (error) {
+        this.message.error(errorMessage(error, `${file.name} could not be uploaded.`));
+      } finally {
+        this.uploading.update((n) => n - 1);
+      }
+    }
+  }
+
+  protected async copyUrl(url: string): Promise<void> {
+    if (await copyText(url)) {
+      this.message.success('URL copied');
+    } else {
+      this.message.error('The URL could not be copied. Select it and copy it by hand.');
     }
   }
 }
