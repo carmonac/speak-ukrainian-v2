@@ -5,7 +5,7 @@ status: In Progress
 assignee:
   - '@claude'
 created_date: '2026-11-24T21:25:21Z'
-updated_date: '2026-11-25T09:23:55Z'
+updated_date: '2026-11-25T09:30:09Z'
 labels:
   - infra
 milestone: m-5
@@ -23,10 +23,10 @@ The migration replaces the database, authentication, storage, e-mail and hosting
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
 - [x] #1 https://speakukrainian.org renders the main page and www redirects to it
-- [ ] #2 The admin signs in with the default password, changes it, and the old one stops working
+- [x] #2 The admin signs in with the default password, changes it, and the old one stops working
 - [x] #3 A new student registers, receives a password-reset e-mail and signs in with the new password
 - [ ] #4 An H5P package is uploaded in the admin app and played in the student app
-- [ ] #5 A chat message sent by the student appears for the admin and the reply appears for the student
+- [x] #5 A chat message sent by the student appears for the admin and the reply appears for the student
 - [x] #6 The daily reminder endpoint, triggered once by hand, completes without error
 <!-- AC:END -->
 
@@ -45,4 +45,12 @@ Still to do, all of which write to production or need the owner: changing the de
 - Daily reminder: not triggered by hand - the real Cron Trigger fired at 08:00:57 UTC on 2026-11-25, outcome ok, and the gateway logged "Daily jobs done: {\"sent\":0}" (Workers observability). So the schedule, the secret and the call through the container binding work in production.
 - Admin password: the default one no longer signs in. The owner changed it; the new one was not tested from here, on purpose.
 Not done: H5P upload and play, and the admin reply in the chat. Both need an administrator session, and the administrator password is now known only to the owners. The test student still exists and should be deleted when the chat test is over.
+
+2026-11-25, production, with a temporary administrator (approved by the owner): a test account promoted to admin directly in D1, used for the run and deleted afterwards. 21 of 21 checks passed:
+- Admin: creates a free published course with a lesson; uploads a 12 MB H5P package (201 in 5.5 s); attaches it to the lesson; edits it through the editor endpoint.
+- Student (second test account): cannot play before owning the course (403); enrolls; gets the player model with URLs on https://speakukrainian.org/api/h5p/; downloads the 12 MB media file with only the play token, byte-identical at both ends; range request 206; content.json reflects the edit; a tampered play token is refused (403); a result is recorded and my-courses shows 100%.
+- Chat: student writes from the lesson; the admin sees the conversation as unread and reads it; the admin replies; the student sees one unread message and the reply in the thread.
+- The real control panel, in the owner's own signed-in browser session, showed that conversation with both messages and the lesson context, and no default-password banner.
+Cleanup: the three test accounts (two students, the temporary admin), the course and the exercise row were deleted from D1 and the six objects of the exercise and of its test library from R2. Afterwards: 1 user (the real administrator), 0 courses, lessons, exercises, orders, enrollments, messages and progress rows, 1 page, and an empty bucket. One email_log row remains (the password-reset record, no longer linked to a user).
+Not covered: a real H5P content type, uploaded through the admin app and played in the student app in a browser. The package used here was a synthetic one with a made-up library, driven through the API, because no real .h5p file was available; it proves storage, access control and streaming, not that the H5P player renders in the browser in production.
 <!-- SECTION:NOTES:END -->
