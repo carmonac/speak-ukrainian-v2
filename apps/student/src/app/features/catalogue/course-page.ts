@@ -41,7 +41,8 @@ import { SessionStore } from '../../core/session.store';
           <div>
             <h1>{{ current.title }}</h1>
             @if (current.summary) {
-              <p class="summary">{{ current.summary }}</p>
+              <!-- Sanitized by the API on save; Angular's sanitizer runs on it again. -->
+              <div class="summary rich-text" [innerHTML]="current.summary"></div>
             }
             @if (current.description) {
               <nz-card nzTitle="About this course" class="block">
@@ -140,7 +141,8 @@ import { SessionStore } from '../../core/session.store';
     }
     .summary {
       font-size: 16px;
-      color: rgba(0, 0, 0, 0.65);
+      color: rgba(0, 0, 0, 0.75);
+      margin-bottom: 16px;
     }
     .description {
       white-space: pre-line;

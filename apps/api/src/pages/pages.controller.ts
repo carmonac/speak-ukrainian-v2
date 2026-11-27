@@ -23,10 +23,11 @@ import {
 import { Roles } from '../auth/roles.decorator.js';
 import { ZodValidationPipe } from '../common/zod-validation.pipe.js';
 import type { Env } from '../config/configuration.js';
+import { PublishedCourses } from '../courses/published-courses.js';
 import { PageCache } from '../site/page-cache.js';
 import { PREVIEW_ROUTE } from '../site/preview.controller.js';
 import { PreviewStore, withPreviewBanner } from '../site/preview.js';
-import { SiteRenderer } from '../site/site.renderer.js';
+import { SiteRenderer, usesCourses } from '../site/site.renderer.js';
 import { PagesService } from './pages.service.js';
 
 @ApiTags('pages')
@@ -41,6 +42,7 @@ export class PagesController {
     private readonly renderer: SiteRenderer,
     private readonly cache: PageCache,
     private readonly previews: PreviewStore,
+    private readonly courses: PublishedCourses,
     config: ConfigService<Env, true>,
   ) {
     this.siteUrl = config.get('PUBLIC_SITE_URL', { infer: true }).replace(/\/$/, '');
@@ -64,12 +66,14 @@ export class PagesController {
    */
   @Post('preview-link')
   @HttpCode(HttpStatus.OK)
-  previewLink(@Body(new ZodValidationPipe(previewPageSchema)) body: PreviewPageInput): {
-    url: string;
-  } {
+  async previewLink(
+    @Body(new ZodValidationPipe(previewPageSchema)) body: PreviewPageInput,
+  ): Promise<{ url: string }> {
+    const courses = usesCourses(body.content) ? await this.courses.get() : [];
     const { html } = this.renderer.renderSafely(
       { title: body.title, path: '/preview', content: body.content, texts: body.texts },
       [body.locale],
+      courses,
     );
     const token = this.previews.add(withPreviewBanner(html));
     return { url: `${this.siteUrl}/api/${PREVIEW_ROUTE}/${token}` };

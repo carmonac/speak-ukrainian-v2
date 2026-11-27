@@ -35,7 +35,7 @@ import { SessionStore } from '../../core/session.store';
       <div class="grid">
         @for (course of courses(); track course.id) {
           <nz-card class="course" [nzTitle]="course.title">
-            <p class="summary">{{ course.summary || 'No description yet.' }}</p>
+            <p class="summary">{{ course.summaryText || 'No description yet.' }}</p>
             <p class="muted">
               {{ course.lessonCount }} {{ course.lessonCount === 1 ? 'lesson' : 'lessons' }}
             </p>
@@ -68,7 +68,11 @@ import { SessionStore } from '../../core/session.store';
     }
     .summary {
       min-height: 44px;
-      white-space: pre-line;
+      display: -webkit-box;
+      -webkit-box-orient: vertical;
+      -webkit-line-clamp: 4;
+      line-clamp: 4;
+      overflow: hidden;
     }
     .foot {
       display: flex;

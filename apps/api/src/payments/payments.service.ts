@@ -11,6 +11,7 @@ import Stripe from 'stripe';
 import type { CheckoutResult } from '@speakukrainian/shared';
 import type { AuthenticatedUser } from '../auth/authenticated-user.js';
 import type { Env } from '../config/configuration.js';
+import { richTextToPlain } from '../courses/rich-text.js';
 import { DatabaseService, now } from '../infra/db/database.service.js';
 
 interface CourseForSale {
@@ -96,6 +97,7 @@ export class PaymentsService {
     }
 
     const orderId = await this.createOrder(user.uid, course, 'stripe');
+    const summaryText = richTextToPlain(course.summary);
     const session = await this.stripe.checkout.sessions.create({
       mode: 'payment',
       client_reference_id: orderId,
@@ -108,7 +110,8 @@ export class PaymentsService {
             unit_amount: course.price_cents,
             product_data: {
               name: course.title,
-              ...(course.summary ? { description: course.summary } : {}),
+              // Stripe shows text only; the summary is HTML.
+              ...(summaryText ? { description: summaryText } : {}),
             },
           },
         },

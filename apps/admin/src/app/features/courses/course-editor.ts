@@ -31,6 +31,7 @@ import {
 import { AdminApi } from '../../core/api';
 import { errorMessage } from '../../core/http';
 import { NavStore } from '../../core/nav.store';
+import { RichTextEditor } from '../../core/rich-text-editor';
 import { ExercisePreview } from '../../h5p/exercise-preview';
 import { H5pApi } from '../../h5p/h5p.api';
 
@@ -89,6 +90,7 @@ function slugify(value: string): string {
     FormsModule,
     TextFieldModule,
     ExercisePreview,
+    RichTextEditor,
     NzCardModule,
     NzFormModule,
     NzInputModule,

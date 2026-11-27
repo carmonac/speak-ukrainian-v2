@@ -13,6 +13,7 @@ import { InMemoryStorage } from '../h5p/h5p.storage-fake.js';
 import type { DatabaseService } from '../infra/db/database.service.js';
 import type { PageCache } from '../site/page-cache.js';
 import type { SiteRenderer } from '../site/site.renderer.js';
+import type { PublishedCourses } from '../courses/published-courses.js';
 import { SiteService } from '../site/site.service.js';
 import { ADMIN_TOKEN, STUDENT_TOKEN, createHttpTestApp } from '../testing/http-test-app.js';
 import { FilesController } from './files.controller.js';
@@ -49,6 +50,7 @@ describe('site files over HTTP', () => {
       {} as SiteRenderer,
       {} as DatabaseService,
       files,
+      {} as PublishedCourses,
       config,
     );
     app = await createHttpTestApp({

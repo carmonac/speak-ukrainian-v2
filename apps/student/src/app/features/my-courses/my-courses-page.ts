@@ -34,7 +34,7 @@ import { SessionStore } from '../../core/session.store';
       <div class="grid">
         @for (course of courses(); track course.id) {
           <nz-card [nzTitle]="course.title">
-            <p class="summary">{{ course.summary }}</p>
+            <p class="summary">{{ course.summaryText }}</p>
             <nz-progress [nzPercent]="course.progressPercent" />
             <p class="muted">
               {{ course.completedLessons }} of {{ course.lessonCount }} lessons completed

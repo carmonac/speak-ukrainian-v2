@@ -1,3 +1,4 @@
+import type { CourseSummary } from '@speakukrainian/shared';
 import type { INestApplication } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import request from 'supertest';
@@ -5,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { Env } from '../config/configuration.js';
 import type { Clock } from '../infra/clock/clock.tokens.js';
 import { createTestDatabase, type TestDatabase } from '../infra/db/sqlite.test-driver.js';
+import { PublishedCourses } from '../courses/published-courses.js';
 import { PagesController } from '../pages/pages.controller.js';
 import { PagesService } from '../pages/pages.service.js';
 import { ADMIN_TOKEN, STUDENT_TOKEN, createHttpTestApp } from '../testing/http-test-app.js';
@@ -141,7 +143,14 @@ describe('page preview over HTTP', () => {
       controllers: [
         {
           controller: PagesController,
-          inject: [PagesService, SiteRenderer, PageCache, PreviewStore, ConfigService],
+          inject: [
+            PagesService,
+            SiteRenderer,
+            PageCache,
+            PreviewStore,
+            PublishedCourses,
+            ConfigService,
+          ],
         },
         { controller: PreviewController, inject: [PreviewStore] },
       ],
@@ -150,6 +159,24 @@ describe('page preview over HTTP', () => {
         { provide: SiteRenderer, useValue: new SiteRenderer(config) },
         { provide: PageCache, useValue: new PageCache(pages, clock) },
         { provide: PreviewStore, useValue: store },
+        {
+          provide: PublishedCourses,
+          useValue: {
+            get: async (): Promise<CourseSummary[]> => [
+              {
+                id: 'c1',
+                title: 'Ukrainian A1',
+                slug: 'a1',
+                summary: '<p><em>Hi</em></p>',
+                summaryText: 'Hi',
+                priceCents: 0,
+                currency: 'eur',
+                status: 'published',
+                lessonCount: 1,
+              },
+            ],
+          },
+        },
         { provide: ConfigService, useValue: config },
       ],
     });
@@ -157,6 +184,15 @@ describe('page preview over HTTP', () => {
 
   afterEach(async () => {
     await app.close();
+  });
+
+  it('lets the previewed template list the published courses', async () => {
+    const path = await link({
+      ...draft,
+      content: '{{#each courses}}<h2>{{ title }}</h2>{{ summary }}{{/each}}',
+    });
+    const response = await server().get(path).expect(200);
+    expect(response.text).toContain('<h2>Ukrainian A1</h2><p><em>Hi</em></p>');
   });
 
   it('only gives a preview link to an administrator', async () => {

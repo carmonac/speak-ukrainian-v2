@@ -17,6 +17,7 @@ import {
   type SqlStatement,
 } from '../infra/db/database.service.js';
 import { H5pService } from '../h5p/h5p.service.js';
+import { richTextToPlain, toStoredRichText } from './rich-text.js';
 
 interface CourseRow {
   id: string;
@@ -53,6 +54,7 @@ export function toCourseSummary(row: CourseRow): CourseSummary {
     title: row.title,
     slug: row.slug,
     summary: row.summary,
+    summaryText: richTextToPlain(row.summary),
     priceCents: row.price_cents,
     currency: row.currency as Currency,
     status: row.status as CourseStatus,
@@ -116,7 +118,7 @@ export class CoursesService {
             id,
             input.title,
             input.slug,
-            input.summary,
+            toStoredRichText(input.summary),
             input.description,
             input.priceCents,
             input.currency,
@@ -147,7 +149,7 @@ export class CoursesService {
             id,
             input.title,
             input.slug,
-            input.summary,
+            toStoredRichText(input.summary),
             input.description,
             input.priceCents,
             input.currency,

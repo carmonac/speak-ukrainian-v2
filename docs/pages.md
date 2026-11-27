@@ -47,8 +47,39 @@ braces: `{{{ rich_intro }}}`.
 | `{{ siteUrl }}`    | Address of this website                                                      |
 | `{{ path }}`       | The page's own path                                                          |
 | `{{ year }}`       | The current year                                                             |
+| `{{ courses }}`    | The published courses, for `{{#each courses}}`; see below                    |
 
 These names are reserved: a text with the same name is ignored.
+
+### Listing the courses
+
+`courses` holds every published course, in alphabetical order. Inside
+`{{#each courses}}` each one has:
+
+| Name                | Value                                                                        |
+| ------------------- | ---------------------------------------------------------------------------- |
+| `{{ title }}`       | The course title                                                             |
+| `{{ url }}`         | Its page in the student classroom, where it is bought                        |
+| `{{ price }}`       | The price in the visitor's language, e.g. `€25.00`, or `Free`                |
+| `{{ free }}`        | True for a free course, for `{{#if free}}`                                   |
+| `{{ lessonCount }}` | Number of lessons                                                            |
+| `{{ summary }}`     | The summary as written in the course editor: formatting, pictures and videos |
+| `{{ summaryText }}` | The summary's words only, shortened — for a small card or a `<meta>` tag     |
+| `{{ slug }}`        | The course's URL name                                                        |
+
+`{{ summary }}` is written as HTML even with double braces: it is cleaned when
+the course is saved, so it is safe as it is. For example:
+
+```handlebars
+{{#each courses}}
+  <article>
+    <h2><a href='{{url}}'>{{title}}</a> — {{price}}</h2>
+    {{summary}}
+  </article>
+{{/each}}
+```
+
+A course saved in the panel is listed with its changes on the next visit.
 
 **Link to the classroom.** The main page should contain a link such as:
 

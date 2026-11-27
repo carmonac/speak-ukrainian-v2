@@ -204,7 +204,8 @@
       <p class="muted">
         HTML with Handlebars. Besides your texts you can use <code>{{ '{' + '{ title }' + '}' }}</code>,
         <code>{{ '{' + '{ locale }' + '}' }}</code>, <code>{{ '{' + '{ studentUrl }' + '}' }}</code> (link to the
-        student classroom), <code>{{ '{' + '{ siteUrl }' + '}' }}</code> and <code>{{ '{' + '{ year }' + '}' }}</code>.
+        student classroom), <code>{{ '{' + '{ siteUrl }' + '}' }}</code>, <code>{{ '{' + '{ year }' + '}' }}</code> and
+        <code>{{ '{' + '{#each courses}' + '}' }}</code> (the published courses, see the documentation).
       </p>
       <app-code-editor [(value)]="content" language="handlebars" />
     </nz-card>

@@ -52,15 +52,15 @@
 
       <nz-form-item>
         <nz-form-label nzFor="summary">Summary</nz-form-label>
-        <nz-form-control nzExtra="One or two sentences shown in the course list.">
-          <textarea
-            nz-input
-            id="summary"
-            name="summary"
-            rows="2"
-            maxlength="500"
-            [(ngModel)]="form().summary"
-          ></textarea>
+        <nz-form-control
+          nzExtra="Shown at the top of the course page. The course list shows its first words, without pictures or videos."
+        >
+          <app-rich-text-editor
+            inputId="summary"
+            placeholder="What will students learn? Add a picture or a short video if you like."
+            [value]="form().summary"
+            (valueChange)="form().summary = $event"
+          />
         </nz-form-control>
       </nz-form-item>
 

@@ -25,13 +25,17 @@ import { Public } from '../auth/public.decorator.js';
 import { Roles } from '../auth/roles.decorator.js';
 import { ZodValidationPipe } from '../common/zod-validation.pipe.js';
 import { CoursesService } from './courses.service.js';
+import { PublishedCourses } from './published-courses.js';
 
 @ApiTags('courses')
 @ApiBearerAuth()
 @Roles('admin')
 @Controller('admin/courses')
 export class AdminCoursesController {
-  constructor(private readonly courses: CoursesService) {}
+  constructor(
+    private readonly courses: CoursesService,
+    private readonly published: PublishedCourses,
+  ) {}
 
   @Get()
   list(): Promise<CourseSummary[]> {
@@ -44,24 +48,30 @@ export class AdminCoursesController {
   }
 
   @Post()
-  create(
+  async create(
     @Body(new ZodValidationPipe(saveCourseSchema)) body: SaveCourseInput,
   ): Promise<CourseDetail> {
-    return this.courses.create(body);
+    const course = await this.courses.create(body);
+    // The public site lists published courses from memory.
+    this.published.clear();
+    return course;
   }
 
   @Put(':id')
-  update(
+  async update(
     @Param('id', new ZodValidationPipe(idSchema)) id: string,
     @Body(new ZodValidationPipe(saveCourseSchema)) body: SaveCourseInput,
   ): Promise<CourseDetail> {
-    return this.courses.update(id, body);
+    const course = await this.courses.update(id, body);
+    this.published.clear();
+    return course;
   }
 
   @Delete(':id')
   @HttpCode(HttpStatus.NO_CONTENT)
-  remove(@Param('id', new ZodValidationPipe(idSchema)) id: string): Promise<void> {
-    return this.courses.remove(id);
+  async remove(@Param('id', new ZodValidationPipe(idSchema)) id: string): Promise<void> {
+    await this.courses.remove(id);
+    this.published.clear();
   }
 }
 

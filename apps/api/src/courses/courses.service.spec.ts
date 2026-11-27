@@ -64,7 +64,9 @@ describe('CoursesService', () => {
     expect(created).toMatchObject({
       title: 'Ukrainian A1',
       slug: 'ukrainian-a1',
-      summary: 'Start here',
+      // Plain text is stored as a paragraph of rich text.
+      summary: '<p>Start here</p>',
+      summaryText: 'Start here',
       description: 'The long text',
       priceCents: 2500,
       currency: 'eur',
@@ -298,5 +300,28 @@ describe('CoursesService', () => {
       ConflictException,
     );
     await expect(service.setLessonExercise('nope', null)).rejects.toBeInstanceOf(NotFoundException);
+  });
+
+  it('sanitizes the summary before storing it and derives its plain text', async () => {
+    const created = await service.create(
+      course({
+        summary:
+          '<h2 onclick="x()">Hi 👋</h2><script>alert(1)</script><p><a href="javascript:x()">a</a> &amp; b</p>' +
+          '<img src="https://example.com/files/1/a.png" onerror="x()"><video src="https://example.com/files/2/v.mp4"></video>',
+      }),
+    );
+    const expected =
+      '<h2>Hi 👋</h2><p><a>a</a> &amp; b</p><img src="https://example.com/files/1/a.png" />' +
+      '<video src="https://example.com/files/2/v.mp4" controls></video>';
+    expect(created.summary).toBe(expected);
+    expect(created.summaryText).toBe('Hi 👋 a & b');
+    expect(t.all<{ summary: string }>('select summary from courses')[0]!.summary).toBe(expected);
+
+    const updated = await service.update(
+      created.id,
+      course({ summary: '<p>New <iframe src="https://x"></iframe></p>' }),
+    );
+    expect(updated.summary).toBe('<p>New </p>');
+    expect((await service.list())[0]!.summaryText).toBe('New');
   });
 });

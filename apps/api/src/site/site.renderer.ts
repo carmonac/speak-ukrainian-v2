@@ -1,7 +1,13 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import Handlebars from 'handlebars';
-import { FALLBACK_LOCALE, resolveTranslation, type PageText } from '@speakukrainian/shared';
+import {
+  FALLBACK_LOCALE,
+  formatPrice,
+  resolveTranslation,
+  type CourseSummary,
+  type PageText,
+} from '@speakukrainian/shared';
 import type { Env } from '../config/configuration.js';
 
 export interface RenderablePage {
@@ -25,7 +31,32 @@ export const BUILT_IN_TEMPLATE_VARIABLES = [
   'studentUrl',
   'siteUrl',
   'year',
+  'courses',
 ] as const;
+
+/** What a template sees of each published course in `{{#each courses}}`. */
+export interface SiteCourse {
+  title: string;
+  slug: string;
+  /** The course page in the student classroom. */
+  url: string;
+  /** Formatted for the visitor's language, or "Free". */
+  price: string;
+  free: boolean;
+  lessonCount: number;
+  /** The formatted summary; already sanitized, so `{{ summary }}` writes it as HTML. */
+  summary: Handlebars.SafeString;
+  /** The summary as one line of plain text, for a short card or a meta tag. */
+  summaryText: string;
+}
+
+/**
+ * Whether a template could use the course list. A cheap check, so pages that
+ * do not show courses never cause the list to be loaded.
+ */
+export function usesCourses(content: string): boolean {
+  return content.includes('courses');
+}
 
 const MAX_CACHED_TEMPLATES = 200;
 
@@ -56,8 +87,12 @@ export class SiteRenderer {
     this.compiled.clear();
   }
 
-  /** Throws if the template is invalid. */
-  render(page: RenderablePage, locales: ReadonlyArray<string>): string {
+  /** Throws if the template is invalid. `courses` are the published ones, in display order. */
+  render(
+    page: RenderablePage,
+    locales: ReadonlyArray<string>,
+    courses: ReadonlyArray<CourseSummary> = [],
+  ): string {
     const template = this.templateFor(page.content);
     const locale = locales[0] ?? FALLBACK_LOCALE;
 
@@ -76,6 +111,7 @@ export class SiteRenderer {
         studentUrl: this.studentUrl,
         siteUrl: this.siteUrl,
         year: new Date().getFullYear(),
+        courses: courses.map((course) => this.siteCourse(course, locale)),
       },
       // Templates only ever see plain data; nothing reaches object prototypes.
       { allowProtoPropertiesByDefault: false, allowProtoMethodsByDefault: false },
@@ -83,9 +119,13 @@ export class SiteRenderer {
   }
 
   /** Like `render`, but a broken template yields a plain error page instead of throwing. */
-  renderSafely(page: RenderablePage, locales: ReadonlyArray<string>): RenderResult {
+  renderSafely(
+    page: RenderablePage,
+    locales: ReadonlyArray<string>,
+    courses: ReadonlyArray<CourseSummary> = [],
+  ): RenderResult {
     try {
-      return { html: this.render(page, locales), ok: true };
+      return { html: this.render(page, locales, courses), ok: true };
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       this.logger.warn(`Template of "${page.path}" failed to render: ${message}`);
@@ -95,6 +135,27 @@ export class SiteRenderer {
 
   notFoundPage(): string {
     return errorPage('Page not found', 'The page you are looking for does not exist.');
+  }
+
+  private siteCourse(course: CourseSummary, locale: string): SiteCourse {
+    let price: string;
+    try {
+      price = formatPrice(course.priceCents, course.currency, locale);
+    } catch {
+      // A locale tag Intl does not accept.
+      price = formatPrice(course.priceCents, course.currency);
+    }
+    return {
+      title: course.title,
+      slug: course.slug,
+      url: `${this.studentUrl}/courses/${encodeURIComponent(course.slug)}`,
+      price,
+      free: course.priceCents === 0,
+      lessonCount: course.lessonCount,
+      // Sanitized by the API when it was saved (see courses/rich-text.ts).
+      summary: new Handlebars.SafeString(course.summary),
+      summaryText: course.summaryText,
+    };
   }
 
   private templateFor(source: string): Handlebars.TemplateDelegate {

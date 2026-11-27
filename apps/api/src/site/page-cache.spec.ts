@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import type { Env } from '../config/configuration.js';
 import type { Clock } from '../infra/clock/clock.tokens.js';
 import { createTestDatabase, type TestDatabase } from '../infra/db/sqlite.test-driver.js';
+import type { PublishedCourses } from '../courses/published-courses.js';
 import { PagesController } from '../pages/pages.controller.js';
 import { PagesService } from '../pages/pages.service.js';
 import { MAX_CACHED_PAGES, MISSING_PAGE_TTL_MS, PAGE_TTL_MS, PageCache } from './page-cache.js';
@@ -199,6 +200,7 @@ describe('public pages through the cache', () => {
       new SiteRenderer(config),
       cache,
       new PreviewStore(clock),
+      {} as PublishedCourses,
       config,
     );
   });

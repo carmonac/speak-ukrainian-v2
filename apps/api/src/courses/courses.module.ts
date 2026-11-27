@@ -6,11 +6,12 @@ import {
   PublicCoursesController,
 } from './courses.controller.js';
 import { CoursesService } from './courses.service.js';
+import { PublishedCourses } from './published-courses.js';
 
 @Module({
   imports: [H5pModule],
   controllers: [AdminCoursesController, AdminLessonsController, PublicCoursesController],
-  providers: [CoursesService],
-  exports: [CoursesService],
+  providers: [CoursesService, PublishedCourses],
+  exports: [CoursesService, PublishedCourses],
 })
 export class CoursesModule {}

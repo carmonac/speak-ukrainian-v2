@@ -28,11 +28,18 @@ export const saveSectionSchema = z.object({
 });
 export type SaveSectionInput = z.infer<typeof saveSectionSchema>;
 
+/** Longest summary accepted, in characters of HTML. */
+export const MAX_COURSE_SUMMARY_LENGTH = 50_000;
+
 /** The whole course is saved at once; array order is the display order. */
 export const saveCourseSchema = z.object({
   title: z.string().trim().min(1).max(200),
   slug: slugSchema,
-  summary: z.string().max(500).default(''),
+  /**
+   * Rich text as HTML, written in the editor of the control panel. The API
+   * sanitizes it before storing it; see `apps/api/src/courses/rich-text.ts`.
+   */
+  summary: z.string().max(MAX_COURSE_SUMMARY_LENGTH).default(''),
   description: z.string().max(20_000).default(''),
   /** Price in minor units (cents). 0 means free. */
   priceCents: z.number().int().min(0).max(100_000_00),
@@ -46,7 +53,10 @@ export interface CourseSummary {
   id: string;
   title: string;
   slug: string;
+  /** Sanitized HTML. Render it as markup (images, videos, formatting). */
   summary: string;
+  /** The summary's text alone, shortened: for cards, meta tags and anything that is not HTML. */
+  summaryText: string;
   priceCents: number;
   currency: Currency;
   status: CourseStatus;

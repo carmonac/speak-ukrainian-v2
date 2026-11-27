@@ -4,13 +4,14 @@ import { ConfigService } from '@nestjs/config';
 import type { NextFunction, Request, Response } from 'express';
 import { RESERVED_PAGE_PATH_PREFIXES, SITE_FILES_PATH } from '@speakukrainian/shared';
 import type { Env } from '../config/configuration.js';
+import { PublishedCourses } from '../courses/published-courses.js';
 import { FilesService, SITE_FILE_CACHE_CONTROL } from '../files/files.service.js';
 import { parseSiteFilePath } from '../files/site-files.js';
 import { DatabaseService } from '../infra/db/database.service.js';
 import { FAVICON_ICO, FAVICON_SVG } from './favicon.js';
 import { PageCache } from './page-cache.js';
 import { preferredLocales } from './site.locale.js';
-import { SiteRenderer } from './site.renderer.js';
+import { SiteRenderer, usesCourses } from './site.renderer.js';
 
 /** The site's icon, at the two paths browsers look for one. */
 const ICONS: Record<string, { type: string; body: Buffer | string }> = {
@@ -34,6 +35,7 @@ export class SiteService {
     private readonly renderer: SiteRenderer,
     private readonly db: DatabaseService,
     private readonly files: FilesService,
+    private readonly courses: PublishedCourses,
     config: ConfigService<Env, true>,
   ) {
     this.salt = config.get('H5P_URL_TOKEN_SECRET', { infer: true });
@@ -128,7 +130,8 @@ export class SiteService {
       return;
     }
 
-    const result = this.renderer.renderSafely(page, locales);
+    const courses = usesCourses(page.content) ? await this.courses.get() : [];
+    const result = this.renderer.renderSafely(page, locales, courses);
     res.setHeader('Content-Language', locales[0] ?? 'en');
     res
       .status(result.ok ? 200 : 500)
