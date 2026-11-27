@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { CALLOUT_KINDS } from '@speakukrainian/shared';
 import {
   PLAIN_TEXT_LENGTH,
   plainTextToRichText,
@@ -107,6 +108,45 @@ describe('sanitizeRichText', () => {
     expect(sanitizeRichText('<p>&lt;script&gt;alert(1)&lt;/script&gt;</p>')).toBe(
       '<p>&lt;script&gt;alert(1)&lt;/script&gt;</p>',
     );
+  });
+});
+
+describe('sanitizeRichText and highlight blocks', () => {
+  it('keeps a callout of every kind with its content', () => {
+    for (const kind of CALLOUT_KINDS) {
+      const html = `<div class="callout callout-${kind}"><p>Remember <strong>this</strong></p><ul><li><p>a</p></li></ul></div>`;
+      expect(sanitizeRichText(html)).toBe(html);
+    }
+  });
+
+  it('normalises the classes of a callout and drops its other attributes', () => {
+    expect(
+      sanitizeRichText(
+        '<div class="extra callout-tip big callout" style="color:red" onclick="x()"><p>t</p></div>',
+      ),
+    ).toBe('<div class="callout callout-tip"><p>t</p></div>');
+  });
+
+  it('unwraps any other div, keeping its contents', () => {
+    expect(
+      sanitizeRichText(
+        '<div class="callout callout-party"><p>a</p></div><div><p>b</p></div><div class="callout-tip"><p>c</p></div>',
+      ),
+    ).toBe('<p>a</p><p>b</p><p>c</p>');
+  });
+
+  it('still removes dangerous content inside a callout', () => {
+    expect(
+      sanitizeRichText(
+        '<div class="callout callout-attention"><p>ok</p><script>alert(1)</script><img src="javascript:x"></div>',
+      ),
+    ).toBe('<div class="callout callout-attention"><p>ok</p></div>');
+  });
+
+  it('reads a callout as its text alone', () => {
+    expect(
+      richTextToPlain('<div class="callout callout-tip"><p>Drink tea</p></div><p>Next</p>'),
+    ).toBe('Drink tea Next');
   });
 });
 

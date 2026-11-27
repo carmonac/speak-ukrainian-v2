@@ -2,7 +2,12 @@ import type { ConfigService } from '@nestjs/config';
 import { describe, expect, it } from 'vitest';
 import type { Env } from '../config/configuration.js';
 import type { PublishedCourse } from '../courses/courses.service.js';
-import { SiteRenderer, usesCourses, type RenderablePage } from './site.renderer.js';
+import {
+  SiteRenderer,
+  usesCourses,
+  withCalloutStyles,
+  type RenderablePage,
+} from './site.renderer.js';
 
 const config = {
   get: (key: string) =>
@@ -138,5 +143,29 @@ describe('SiteRenderer', () => {
       expect(usesCourses('{{#each courses}}{{/each}}')).toBe(true);
       expect(usesCourses('<h1>{{ title }}</h1>')).toBe(false);
     });
+  });
+});
+
+describe('withCalloutStyles', () => {
+  const callout = '<div class="callout callout-tip"><p>Tea</p></div>';
+
+  it('adds the highlight styles before </head> when the page shows a block', () => {
+    const html = withCalloutStyles(
+      `<html><head><title>x</title></head><body>${callout}</body></html>`,
+    );
+    expect(html).toMatch(
+      /<style data-rich-text-callouts>[\s\S]*\.callout-tip[\s\S]*<\/style>\n<\/head>/,
+    );
+  });
+
+  it('puts them first when the page has no head, and only once', () => {
+    const once = withCalloutStyles(callout);
+    expect(once.startsWith('<style data-rich-text-callouts>')).toBe(true);
+    expect(withCalloutStyles(once)).toBe(once);
+  });
+
+  it('leaves a page without blocks untouched', () => {
+    const html = '<html><head></head><body><p class="callout">not a block</p></body></html>';
+    expect(withCalloutStyles(html)).toBe(html);
   });
 });

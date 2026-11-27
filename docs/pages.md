@@ -71,7 +71,8 @@ These names are reserved: a text with the same name is ignored.
 
 `{{ summary }}` and `{{ description }}` are written as HTML even with double
 braces: they are cleaned when the course is saved, so they are safe as they
-are. For example:
+are. When they contain highlight boxes (tip, key concept, attention…), the
+page gets the boxes' styles automatically, before `</head>`. For example:
 
 ```handlebars
 {{#each courses}}

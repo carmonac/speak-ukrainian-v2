@@ -25,7 +25,14 @@ import { NzInputModule } from 'ng-zorro-antd/input';
 import { NzMessageService } from 'ng-zorro-antd/message';
 import { NzPopoverModule } from 'ng-zorro-antd/popover';
 import { NzTooltipModule } from 'ng-zorro-antd/tooltip';
-import { MAX_SITE_FILE_BYTES, formatMaxSiteFileSize } from '@speakukrainian/shared';
+import {
+  CALLOUTS,
+  MAX_SITE_FILE_BYTES,
+  calloutClasses,
+  calloutKindOf,
+  formatMaxSiteFileSize,
+  type CalloutKind,
+} from '@speakukrainian/shared';
 import { AdminApi } from './api';
 import { errorMessage } from './http';
 
@@ -49,6 +56,40 @@ const Video = Node.create({
   },
 });
 
+/**
+ * A highlight block (`<div class="callout callout-<kind>">`) around ordinary
+ * blocks. Callouts do not nest: a box inside a box reads as a mistake. Its
+ * label and colours come from the shared stylesheet (`rich-text-callouts.ts`),
+ * injected once in `main.ts`, so the editor shows what students will see.
+ */
+const Callout = Node.create({
+  name: 'callout',
+  group: 'block',
+  content: '(paragraph | heading | bulletList | orderedList | blockquote | image | video)+',
+  defining: true,
+  addAttributes() {
+    return {
+      kind: {
+        default: 'tip',
+        parseHTML: (element) => calloutKindOf(element.getAttribute('class') ?? undefined) ?? 'tip',
+        renderHTML: (attributes) => ({ class: calloutClasses(attributes['kind'] as CalloutKind) }),
+      },
+    };
+  },
+  parseHTML() {
+    return [
+      {
+        tag: 'div',
+        getAttrs: (element) =>
+          calloutKindOf(element.getAttribute('class') ?? undefined) ? null : false,
+      },
+    ];
+  },
+  renderHTML({ HTMLAttributes }) {
+    return ['div', HTMLAttributes, 0];
+  },
+});
+
 /** The emojis offered by the picker; any other can still be typed or pasted. */
 const EMOJIS = [
   '😀 😃 😄 😊 🙂 😉 😍 🥰 😎 🤩 🤔 😅',
@@ -65,9 +106,9 @@ type Upload = 'image' | 'video';
 /**
  * A friendly rich-text editor (Tiptap) bound two-way to `value`, as HTML.
  *
- * The toolbar covers what the course summary needs: bold, italic, underline,
- * two heading sizes, lists, links, emojis, and images and videos uploaded as
- * site files (the same uploads the Storage section lists). The API sanitizes
+ * The toolbar covers what the course texts need: bold, italic, underline,
+ * two heading sizes, lists, highlight boxes, links, emojis, and images and
+ * videos uploaded as site files (the same uploads the Storage section lists). The API sanitizes
  * whatever is saved; this only decides what is easy to write.
  *
  * Tiptap runs outside Angular: its `transaction` event bumps a signal, which
@@ -177,6 +218,25 @@ type Upload = 'image' | 'video';
             (click)="run('orderedList')"
           >
             <nz-icon nzType="ordered-list" />
+          </button>
+        </div>
+        <div class="rte-group">
+          <button
+            nz-button
+            nzType="text"
+            type="button"
+            nz-tooltip
+            nzTooltipTitle="Highlight box: key concept, tip, reminder…"
+            aria-label="Highlight box"
+            [class.rte-active]="active().callout !== null"
+            nz-popover
+            nzPopoverTrigger="click"
+            nzPopoverPlacement="bottomLeft"
+            [nzPopoverContent]="calloutMenu"
+            [nzPopoverVisible]="calloutOpen()"
+            (nzPopoverVisibleChange)="calloutOpen.set($event)"
+          >
+            <nz-icon nzType="highlight" />
           </button>
         </div>
         <div class="rte-group">
@@ -306,6 +366,36 @@ type Upload = 'image' | 'video';
       </form>
     </ng-template>
 
+    <ng-template #calloutMenu>
+      <div class="rte-callouts" role="menu" aria-label="Highlight boxes">
+        <p class="rte-callouts-hint">
+          {{
+            active().callout
+              ? 'Change the kind of this box, or remove it.'
+              : 'Puts the selected text, or the current paragraph, in a box.'
+          }}
+        </p>
+        @for (callout of callouts; track callout.kind) {
+          <button
+            type="button"
+            role="menuitem"
+            class="rte-callout-option"
+            [class.rte-callout-current]="active().callout === callout.kind"
+            [style.--callout-color]="callout.color"
+            (click)="setCallout(callout.kind)"
+          >
+            <span class="rte-callout-icon" aria-hidden="true">{{ callout.icon }}</span>
+            {{ callout.label }}
+          </button>
+        }
+        @if (active().callout) {
+          <button nz-button nzBlock nzDanger type="button" (click)="removeCallout()">
+            Remove the box (keep the text)
+          </button>
+        }
+      </div>
+    </ng-template>
+
     <ng-template #emojiGrid>
       <div class="rte-emojis" aria-label="Emojis">
         @for (emoji of emojis; track emoji) {
@@ -418,6 +508,48 @@ type Upload = 'image' | 'video';
       color: #bfbfbf;
       pointer-events: none;
     }
+    .rte-content .ProseMirror .callout > :last-child {
+      margin-bottom: 0;
+    }
+    .rte-callouts {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      width: 240px;
+    }
+    .rte-callouts-hint {
+      margin: 0 0 6px;
+      color: rgba(0, 0, 0, 0.45);
+      font-size: 12px;
+    }
+    .rte-callout-option {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 8px;
+      border: none;
+      border-left: 4px solid var(--callout-color);
+      border-radius: 4px;
+      background: color-mix(in srgb, var(--callout-color) 8%, transparent);
+      text-align: left;
+      cursor: pointer;
+      font: inherit;
+    }
+    .rte-callout-option:hover,
+    .rte-callout-option:focus-visible {
+      background: color-mix(in srgb, var(--callout-color) 18%, transparent);
+    }
+    .rte-callout-option.rte-callout-current {
+      font-weight: 600;
+      outline: 1px solid var(--callout-color);
+    }
+    .rte-callouts [nz-button] {
+      margin-top: 6px;
+    }
+    .rte-callout-icon {
+      width: 20px;
+      text-align: center;
+    }
     .rte-link-form {
       display: flex;
       flex-direction: column;
@@ -466,6 +598,8 @@ export class RichTextEditor implements OnDestroy {
   private readonly revision = signal(0);
 
   protected readonly emojis = EMOJIS;
+  protected readonly callouts = CALLOUTS;
+  protected readonly calloutOpen = signal(false);
   protected readonly focused = signal(false);
   protected readonly uploading = signal<Upload | null>(null);
   protected readonly linkOpen = signal(false);
@@ -484,6 +618,9 @@ export class RichTextEditor implements OnDestroy {
       bulletList: editor?.isActive('bulletList') ?? false,
       orderedList: editor?.isActive('orderedList') ?? false,
       link: editor?.isActive('link') ?? false,
+      callout: editor?.isActive('callout')
+        ? ((editor.getAttributes('callout')['kind'] as CalloutKind | undefined) ?? null)
+        : null,
       canUndo: editor?.can().undo() ?? false,
       canRedo: editor?.can().redo() ?? false,
     };
@@ -509,6 +646,7 @@ export class RichTextEditor implements OnDestroy {
           }),
           Image,
           Video,
+          Callout,
           Placeholder.configure({ placeholder: () => this.placeholder() }),
         ],
         onTransaction: () => this.revision.update((n) => n + 1),
@@ -525,7 +663,13 @@ export class RichTextEditor implements OnDestroy {
       const value = this.value();
       const editor = this.editor;
       if (editor && value !== (editor.isEmpty ? '' : editor.getHTML())) {
-        editor.commands.setContent(value, { emitUpdate: false });
+        // Not an edit, so not undoable: otherwise Undo right after a course
+        // loads empties the field, and a save then stores it empty.
+        editor
+          .chain()
+          .setMeta('addToHistory', false)
+          .setContent(value, { emitUpdate: false })
+          .run();
       }
     });
   }
@@ -615,6 +759,44 @@ export class RichTextEditor implements OnDestroy {
   protected removeLink(): void {
     this.linkOpen.set(false);
     this.editor?.chain().focus().extendMarkRange('link').unsetLink().run();
+  }
+
+  /** Puts the selection in a box of `kind`, or changes the kind of the box it is in. */
+  protected setCallout(kind: CalloutKind): void {
+    this.calloutOpen.set(false);
+    const editor = this.editor;
+    if (!editor) {
+      return;
+    }
+    if (editor.isActive('callout')) {
+      editor.chain().focus().updateAttributes('callout', { kind }).run();
+      return;
+    }
+    if (!editor.chain().focus().wrapIn('callout', { kind }).run()) {
+      this.message.info('Put the cursor in a paragraph, or select some text, first.');
+    }
+  }
+
+  /**
+   * Takes the whole box away; its content stays where it was. `lift` alone
+   * would move only the selected paragraphs out and split the box, so the
+   * selection is first stretched over everything inside it.
+   */
+  protected removeCallout(): void {
+    this.calloutOpen.set(false);
+    const editor = this.editor;
+    if (!editor) {
+      return;
+    }
+    const { $from } = editor.state.selection;
+    for (let depth = $from.depth; depth > 0; depth--) {
+      if ($from.node(depth).type.name === 'callout') {
+        const from = $from.start(depth) + 1;
+        const to = $from.end(depth) - 1;
+        editor.chain().focus().setTextSelection({ from, to }).lift('callout').run();
+        return;
+      }
+    }
   }
 
   protected insertEmoji(emoji: string): void {

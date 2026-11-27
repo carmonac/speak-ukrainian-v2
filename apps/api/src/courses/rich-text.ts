@@ -1,11 +1,14 @@
 import sanitizeHtml from 'sanitize-html';
+import { calloutClasses, calloutKindOf } from '@speakukrainian/shared';
 
 /**
  * Rich text written in the control panel's editor (the course summary) and
  * shown to students and visitors: in the student app, on the public site and,
  * as text, in Stripe Checkout.
  *
- * The editor only produces a handful of elements, and only those are kept.
+ * The editor only produces a handful of elements, and only those are kept;
+ * the one `div` allowed is a highlight block (see `rich-text-callouts.ts` in
+ * the shared package).
  * Everything else is dropped before the HTML reaches the database, so what is
  * stored is safe to insert into any page as it is: no scripts, no event
  * handlers, no styles, no `javascript:` links, no iframes.
@@ -27,8 +30,11 @@ const RICH_TEXT_OPTIONS: sanitizeHtml.IOptions = {
     'a',
     'img',
     'video',
+    // Only as a highlight block (`callout`); any other div is unwrapped below.
+    'div',
   ],
   allowedAttributes: {
+    div: ['class'],
     a: ['href', 'target', 'rel'],
     img: ['src', 'alt', 'title'],
     video: ['src', 'controls', 'poster', 'title'],
@@ -65,6 +71,15 @@ const RICH_TEXT_OPTIONS: sanitizeHtml.IOptions = {
     },
     // A video without controls cannot be played: always give it some.
     video: (tagName, attribs) => ({ tagName, attribs: { ...attribs, controls: '' } }),
+    // A highlight block keeps exactly its two classes. A div that is not one
+    // becomes a tag nobody allows, which `discard` removes while keeping its
+    // contents: pasted layout divs vanish, their text stays.
+    div: (_tagName, attribs): sanitizeHtml.Tag => {
+      const kind = calloutKindOf(attribs['class']);
+      return kind
+        ? { tagName: 'div', attribs: { class: calloutClasses(kind) } }
+        : { tagName: 'unwrapped-div', attribs: {} };
+    },
   },
   exclusiveFilter: (frame) =>
     // Media without a usable address is an empty box; a link without one is text.

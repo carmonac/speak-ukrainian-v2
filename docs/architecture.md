@@ -252,11 +252,20 @@ the build configuration: `ng serve` copies `config/development/config.json`
   `{{ summary }}` and `{{ description }}`.
   So it is stored as HTML that `apps/api/src/courses/rich-text.ts` has
   sanitized against an allowlist (paragraphs, two heading levels, bold,
-  italic, underline, strike, lists, quotes, links, `img`, `video`; `http`/
+  italic, underline, strike, lists, quotes, links, `img`, `video`, and the
+  highlight boxes — `<div class="callout callout-<kind>">`, the only `div`
+  and the only classes kept; `http`/
   `https` addresses, plus `mailto` for links; no styles, classes or event
   handlers) before it reaches the database. Anything that cannot show HTML —
   course cards, Stripe Checkout, meta tags — uses `summaryText` (or
   `descriptionText`), the plain text the API derives from it.
+- The highlight boxes (key concept, tip, reminder, attention, do, don't,
+  example, quote, estimated time, learning outcomes) are our own take on
+  Moodle's C4L blocks. Their kinds, labels, colours and stylesheet live in one
+  file, `packages/shared/src/rich-text-callouts.ts`, read by the sanitizer,
+  the panel's editor, both apps (which add the stylesheet at startup) and the
+  public site's renderer (which adds it to any page that shows a box). The
+  label is drawn by CSS, so the stored HTML is just the box and its content.
 - Site files share the private bucket with the exercises but live under their
   own prefix, `site/files/<id>/<name>`. The public route accepts exactly that
   shape (a UUID and one file name) and the administrator's list and delete

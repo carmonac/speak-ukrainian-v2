@@ -7,3 +7,4 @@ export * from './course.js';
 export * from './user.js';
 export * from './message.js';
 export * from './dashboard.js';
+export * from './rich-text-callouts.js';

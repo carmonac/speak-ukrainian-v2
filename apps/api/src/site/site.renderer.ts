@@ -4,6 +4,8 @@ import Handlebars from 'handlebars';
 import {
   FALLBACK_LOCALE,
   formatPrice,
+  CALLOUT_CLASS,
+  RICH_TEXT_CALLOUT_CSS,
   resolveTranslation,
   type PageText,
 } from '@speakukrainian/shared';
@@ -105,7 +107,7 @@ export class SiteRenderer {
       texts[text.key] = resolveTranslation(text.translations, locales, FALLBACK_LOCALE);
     }
 
-    return template(
+    const html = template(
       {
         ...texts,
         // Built-ins last so a text cannot shadow them.
@@ -120,6 +122,7 @@ export class SiteRenderer {
       // Templates only ever see plain data; nothing reaches object prototypes.
       { allowProtoPropertiesByDefault: false, allowProtoMethodsByDefault: false },
     );
+    return withCalloutStyles(html);
   }
 
   /** Like `render`, but a broken template yields a plain error page instead of throwing. */
@@ -199,4 +202,22 @@ function errorPage(heading: string, detail: string): string {
   </body>
 </html>
 `;
+}
+
+/** Marks the style block, so it is added once however often a page is rendered. */
+const CALLOUT_STYLE_MARK = 'data-rich-text-callouts';
+
+/**
+ * A page that shows rich text with highlight blocks (`{{ summary }}`,
+ * `{{ description }}`) gets their styles, so the template's author does not
+ * have to know they exist. Added before `</head>` when there is one, otherwise
+ * at the very start; pages without a block are returned untouched.
+ */
+export function withCalloutStyles(html: string): string {
+  if (!html.includes(`class="${CALLOUT_CLASS} `) || html.includes(CALLOUT_STYLE_MARK)) {
+    return html;
+  }
+  const style = `<style ${CALLOUT_STYLE_MARK}>\n${RICH_TEXT_CALLOUT_CSS}\n</style>`;
+  const head = html.search(/<\/head>/i);
+  return head === -1 ? `${style}\n${html}` : `${html.slice(0, head)}${style}\n${html.slice(head)}`;
 }
