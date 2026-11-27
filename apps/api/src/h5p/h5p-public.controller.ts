@@ -30,10 +30,10 @@ import {
 import { H5pContentRepository } from './h5p-content.repository.js';
 import { H5pServeService } from './h5p-serve.service.js';
 import { H5pUrlTokenService } from './h5p-url-token.service.js';
+import { contentFilesUrlFor, PLAY_FILES_PATH } from './h5p.url-generator.js';
 import { requireCaller } from './h5p.user.js';
 
-/** Path segment of the token-authorized content-file route. */
-export const PLAY_FILES_PATH = 'play-files';
+export { PLAY_FILES_PATH };
 
 /**
  * A content file is replaced under the same URL when an exercise is re-saved,
@@ -128,7 +128,11 @@ export class H5pPublicController {
     const entry = (model.integration as { contents?: Record<string, { contentUrl?: string }> })
       .contents?.[`cid-${contentId}`];
     if (entry) {
-      entry.contentUrl = `${this.baseUrl}/${PLAY_FILES_PATH}/${this.tokens.mintPlay(contentId)}/${contentId}`;
+      entry.contentUrl = contentFilesUrlFor(
+        this.baseUrl,
+        this.tokens.mintPlay(contentId),
+        contentId,
+      );
     }
     return model;
   }

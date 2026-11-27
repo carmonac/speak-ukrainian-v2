@@ -76,11 +76,15 @@ Joubel's editor runs in an iframe and makes its own requests, and a playing
 exercise loads its images and audio with plain `<img>`/`<audio>` tags. Neither
 can send an `Authorization` header. So:
 
-- the **editor token** (`scope: h5p-editor`, 2 hours) identifies the
-  administrator on the editor's AJAX and temporary-file URLs. The account's
-  current role is re-checked on every request;
+- the **editor token** (`scope: h5p-editor`, 12 hours — one editing session,
+  `H5P_EDITING_SESSION_MS`, which is also how long uploads wait in
+  `h5p/temp/` for a save) identifies the administrator on the editor's AJAX
+  and temporary-file URLs. The account's current role is re-checked on every
+  request;
 - the **play token** (`scope: h5p-play`, 6 hours) is put into the player
-  model's `contentUrl` and authorises the files of exactly one exercise.
+  model's `contentUrl` and authorises the files of exactly one exercise. The
+  editor model carries one too, for an exercise that already exists, so the
+  editor can show the files it already has.
 
 Both are HMAC-SHA256 signed with `H5P_URL_TOKEN_SECRET`. Rotating the secret
 invalidates open editors and players; a reload fixes it.
@@ -98,7 +102,12 @@ state-saving (`contentUserData`) and `setFinished` are switched off.
 
 - The editor's interface is English; the player's labels have a Ukrainian
   overlay (`h5p.translations.uk.ts`).
-- After two hours the editor's URL token expires; reload the editor to continue.
+- After twelve hours the editor's URL token expires; the editor then refuses
+  uploads with "That editing session has expired" and has to be reloaded.
+- The `ajax` routes answer errors as `{ success: false, message }`, the shape
+  H5P's own clients read (`h5p-ajax.exception-filter.ts`). With the API's usual
+  envelope the editor took a refused upload for a successful one and stored the
+  error's `path` (the request URL) as the image.
 - Installed libraries are never removed automatically.
 - The pinned H5P core declares its icon font in `styles/h5p-fonts.css`, which
   the library does not list; `h5p.config.ts` adds it explicitly. Keep that when

@@ -187,6 +187,15 @@ export class HttpExceptionFilter implements ExceptionFilter {
     // `@Header`, the default interceptor or the handler set before throwing.
     // This is also the only place that sees a guard's refusal (ADR-033).
     response.setHeader('Cache-Control', NO_STORE);
-    response.status(status).json(body);
+    response.status(status).json(this.shape(body));
+  }
+
+  /**
+   * The envelope as written. The hook exists for a client that reads errors in
+   * a format of its own: `H5pAjaxExceptionFilter` answers H5P's widgets in
+   * theirs. Status, headers and logging stay this class's alone.
+   */
+  protected shape(body: ErrorResponseBody): object {
+    return body;
   }
 }

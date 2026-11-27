@@ -66,3 +66,19 @@ export function createH5pUrlGenerator(
 export function temporaryFilesUrlFor(baseUrl: string, token: string): string {
   return `${baseUrl}/${TEMP_FILES_TOKEN_PATH}/${token}`;
 }
+
+/** Path segment of the token-authorized content-file route (`GET play-files/:token/:id/*`). */
+export const PLAY_FILES_PATH = 'play-files';
+
+/**
+ * The prefix `H5P.getPath` builds a saved file's URL from, for one exercise:
+ * `contents['cid-<id>'].contentUrl` in an integration object.
+ *
+ * Both the player and the editor need it. The player's `<img>`/`<audio>` loads
+ * and the editor's thumbnails are browser subresources that cannot carry an
+ * `Authorization` header, so the play token is a path segment, exactly as the
+ * editor token is in {@link temporaryFilesUrlFor}.
+ */
+export function contentFilesUrlFor(baseUrl: string, playToken: string, contentId: string): string {
+  return `${baseUrl}/${PLAY_FILES_PATH}/${playToken}/${contentId}`;
+}

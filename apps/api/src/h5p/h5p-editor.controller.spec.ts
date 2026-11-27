@@ -7,6 +7,7 @@ import { Readable } from 'node:stream';
 import { BadRequestException, HttpException, UnauthorizedException } from '@nestjs/common';
 import type { PipeTransform } from '@nestjs/common';
 import {
+  EXCEPTION_FILTERS_METADATA,
   HTTP_CODE_METADATA,
   INTERCEPTORS_METADATA,
   PATH_METADATA,
@@ -27,6 +28,7 @@ import {
   type UserRole,
 } from '@speakukrainian/shared';
 import type { AuthenticatedUser } from '../auth/authenticated-user.js';
+import { H5pAjaxExceptionFilter } from './h5p-ajax.exception-filter.js';
 import { IS_PUBLIC_KEY } from '../auth/public.decorator.js';
 import { ROLES_KEY } from '../auth/roles.decorator.js';
 import { UploadLimitInterceptor } from '../common/upload-limit.interceptor.js';
@@ -818,6 +820,19 @@ describe('H5pEditorController route metadata', () => {
       urlTokenRoutes.has(name) ? true : undefined,
     );
   });
+
+  it.each(routes)(
+    "answers errors from %s in H5P's format only where H5P's client reads them",
+    (name, route) => {
+      // Joubel's uploader reads a body without `success: false` as a successful
+      // upload and stores its `path` (TASK-63). The two ajax routes are the ones
+      // its widgets parse; everything else keeps the API's own envelope.
+      const filters = (Reflect.getMetadata(EXCEPTION_FILTERS_METADATA, route) ?? []) as unknown[];
+      expect(filters.includes(H5pAjaxExceptionFilter)).toBe(
+        name === 'ajaxGet' || name === 'ajaxPost',
+      );
+    },
+  );
 
   it('registers the tokenised preview on a path that cannot shadow temp-files', () => {
     // `temp-files/:token/*path` and `temp-files/*path` would both match

@@ -17,7 +17,8 @@ const PLAY_TOKEN_LIFETIME_MS = 6 * 60 * 60 * 1000;
  * Mints and verifies the credential the H5P editor's own client carries in its
  * URLs.
  *
- * The lifetime is `H5PConfig.temporaryFileLifetime` — 120 minutes — rather than
+ * The lifetime is `H5PConfig.temporaryFileLifetime` — twelve hours, see
+ * `H5P_EDITING_SESSION_MS` — rather than
  * a number of its own. The token exists to let the widget's client act for the
  * length of one editing session, and that setting is already the library's
  * answer to how long an editing session's scratch state lives; a token that

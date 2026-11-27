@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { MAX_H5P_UPLOAD_BYTES } from '@speakukrainian/shared';
-import { createH5pConfig } from './h5p.config.js';
+import { createH5pConfig, H5P_EDITING_SESSION_MS } from './h5p.config.js';
 
 const BASE_URL = '/api/h5p';
 
@@ -32,6 +32,15 @@ describe('createH5pConfig', () => {
     expect(config.installLibraryLockTimeout).toBeGreaterThan(
       config.installLibraryLockMaxOccupationTime,
     );
+  });
+
+  it('lets one editing session last a working day, not the stock two hours', () => {
+    // The editor token and temporary uploads both live this long; an author
+    // whose token expired mid-afternoon could no longer upload (TASK-63).
+    const config = createH5pConfig(BASE_URL);
+
+    expect(config.temporaryFileLifetime).toBe(H5P_EDITING_SESSION_MS);
+    expect(H5P_EDITING_SESSION_MS).toBe(12 * 60 * 60 * 1000);
   });
 
   it('leaves result tracking off, since nothing stores user data', () => {

@@ -14,6 +14,9 @@ import { MAX_H5P_UPLOAD_BYTES } from '@speakukrainian/shared';
  * `proxy`, `contentFilesUrlPlayerOverride` — is silently ignored. Setting one
  * of those here would look right and do nothing.
  */
+/** One editing session: the editor token's lifetime and how long uploads wait for a save. */
+export const H5P_EDITING_SESSION_MS = 12 * 60 * 60 * 1000;
+
 export function createH5pConfig(baseUrl: string): H5PConfig {
   return new H5PConfig(undefined, {
     // Not cosmetic. The stock defaults are 16 MiB per file and 64 MiB total,
@@ -46,6 +49,16 @@ export function createH5pConfig(baseUrl: string): H5PConfig {
     // It buys no behaviour; it is here so that a future change to the budget
     // above has an obvious companion rather than a hidden default.
     installLibraryLockTimeout: 600_000,
+
+    // How long one editing session lasts: it is both the lifetime of the
+    // editor's URL token (`H5pUrlTokenService.mint`) and how long an upload
+    // waits in temporary storage for a save. The stock two hours is shorter
+    // than an author's afternoon, and an expired token is not harmless: every
+    // upload after it is refused, and before H5P-format errors existed
+    // (`H5pAjaxExceptionFilter`) the editor stored the refusal's URL as the
+    // file's path and the save then deleted the real files. Twelve hours is a
+    // working day; the price is temporary uploads lingering that long.
+    temporaryFileLifetime: H5P_EDITING_SESSION_MS,
 
     // `trackResults` is out of scope for Phase 1 and no
     // `IContentUserDataStorage` is wired, so the "finished" call would have

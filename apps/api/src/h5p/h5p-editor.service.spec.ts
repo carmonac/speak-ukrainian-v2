@@ -1,11 +1,6 @@
 import { Readable } from 'node:stream';
 import { HttpException } from '@nestjs/common';
-import {
-  H5PAjaxEndpoint,
-  H5PConfig,
-  H5PEditor,
-  fsImplementations,
-} from '@lumieducation/h5p-server';
+import { H5PAjaxEndpoint, H5PEditor, fsImplementations } from '@lumieducation/h5p-server';
 import type { IEditorModel, ILibraryMetadata, IUser } from '@lumieducation/h5p-server';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { MockInstance } from 'vitest';
@@ -23,11 +18,11 @@ import { H5pEditorService, TEMP_SWEEP_INTERVAL_MS } from './h5p-editor.service.j
 import { H5pLibraryStorage } from './h5p-library.storage.js';
 import { H5pTemporaryStorage } from './h5p-temporary.storage.js';
 import { H5pUrlTokenService } from './h5p-url-token.service.js';
-import { createH5pConfig } from './h5p.config.js';
+import { createH5pConfig, H5P_EDITING_SESSION_MS } from './h5p.config.js';
 import { H5pService } from './h5p.service.js';
 import { InMemoryStorage } from './h5p.storage-fake.js';
 import { createH5pUrlGenerator } from './h5p.url-generator.js';
-import { verifyH5pUrlToken } from './h5p.url-token.js';
+import { H5P_PLAY_TOKEN_SCOPE, verifyH5pUrlToken } from './h5p.url-token.js';
 import type { Env } from '../config/configuration.js';
 
 const EDITOR: IUser = {
@@ -38,7 +33,7 @@ const EDITOR: IUser = {
 };
 
 const NOW = new Date('2026-05-01T12:00:00.000Z');
-const LIFETIME_MS = new H5PConfig(undefined).temporaryFileLifetime;
+const LIFETIME_MS = H5P_EDITING_SESSION_MS;
 /** Written long enough before `NOW` that `createdAt + temporaryFileLifetime` is in the past. */
 const EXPIRED_AT = new Date(NOW.getTime() - LIFETIME_MS - 60_000);
 
@@ -591,6 +586,28 @@ describe('H5pEditorService', () => {
       expect(
         uidNamedBy((model.integration.editor?.filesPath ?? '').replace(`${BASE_URL}/temp/`, '')),
       ).toBe(EDITOR.id);
+    });
+
+    it('points the editor at the files an existing exercise already has', async () => {
+      // Without this entry `H5P.getPath` falls back to `${url}/content/<id>`,
+      // a route this API does not have, and every image of a reopened exercise
+      // is a broken thumbnail (TASK-63). The player's route and token serve it.
+      const contentId = await indexRow('some-content-id');
+
+      const model = await harness.service.editorModel(contentId, undefined, EDITOR);
+      const contentUrl = model.integration.contents?.[`cid-${contentId}`]?.contentUrl ?? '';
+      const match = new RegExp(`^${BASE_URL}/play-files/([^/]+)/${contentId}$`).exec(contentUrl);
+      const playToken = match?.[1] ?? '';
+
+      expect(match).not.toBeNull();
+      const verified = verifyH5pUrlToken(TOKEN_SECRET, playToken, Date.now(), H5P_PLAY_TOKEN_SCOPE);
+      expect(verified.ok && verified.uid).toBe(contentId);
+    });
+
+    it('names no content files for an exercise that does not exist yet', async () => {
+      const model = await harness.service.editorModel(undefined, undefined, EDITOR);
+
+      expect(model.integration.contents).toBeUndefined();
     });
 
     it('builds the preview prefix as the route that has to answer it', async () => {

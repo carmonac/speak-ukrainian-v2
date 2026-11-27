@@ -12,6 +12,7 @@ import {
   Req,
   Res,
   UploadedFiles,
+  UseFilters,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
@@ -40,6 +41,7 @@ import {
   editorMachineName,
   wildcardPath,
 } from './h5p.request.js';
+import { H5pAjaxExceptionFilter } from './h5p-ajax.exception-filter.js';
 import { pipePartialStream, pipeWholeStream, rangeCallbackFor } from './h5p.responses.js';
 import { H5pAjaxUpload } from './h5p.upload.decorator.js';
 import { TEMP_FILES_TOKEN_PATH } from './h5p.url-generator.js';
@@ -129,6 +131,9 @@ export class H5pEditorController {
    * real — no H5P client sends that combination — and it cannot rot.
    */
   @Get('ajax')
+  // Errors in the shape H5P's clients read; see the filter for what the
+  // stock envelope did to an upload.
+  @UseFilters(H5pAjaxExceptionFilter)
   @Roles('admin')
   @H5pUrlToken()
   async ajaxGet(
@@ -166,6 +171,7 @@ export class H5pEditorController {
    * not answer 500 because a `rm` did not.
    */
   @Post('ajax')
+  @UseFilters(H5pAjaxExceptionFilter)
   @Roles('admin')
   @H5pUrlToken()
   // Nest answers a POST 201 by default, and four of the five actions here

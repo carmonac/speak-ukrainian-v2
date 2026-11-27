@@ -29,7 +29,7 @@ import { assertSafeContentId, assertSafeRequestPath } from './h5p.paths.js';
 import type { RangeCallback } from './h5p.responses.js';
 import { H5pService, mainLibraryUberName } from './h5p.service.js';
 import { H5P_AJAX_ENDPOINT, H5P_CONFIG, H5P_EDITOR } from './h5p.tokens.js';
-import { temporaryFilesUrlFor } from './h5p.url-generator.js';
+import { contentFilesUrlFor, temporaryFilesUrlFor } from './h5p.url-generator.js';
 import { h5pUserFor } from './h5p.user.js';
 
 /**
@@ -127,7 +127,16 @@ export interface PostAjaxRequest {
  * in the type system instead of in the response. A field is added here only by
  * naming it.
  */
-export type EditorModelResponse = Pick<IEditorModel, 'integration' | 'scripts' | 'styles'>;
+export type EditorModelResponse = Pick<IEditorModel, 'scripts' | 'styles'> & {
+  /**
+   * `contents` is narrowed to the one field the editor reads from it. The
+   * library types it as the player's full per-content entry, which the editor
+   * never renders; see `H5pEditorService.contentsFor`.
+   */
+  integration: Omit<IEditorModel['integration'], 'contents'> & {
+    contents?: Record<string, { contentUrl?: string }>;
+  };
+};
 
 export interface TemporaryFileResult {
   mimetype: string;
@@ -371,11 +380,36 @@ export class H5pEditorService {
                 },
               }
             : {}),
+          ...(contentId !== undefined ? { contents: this.contentsFor(contentId) } : {}),
         },
         scripts: model.scripts,
         styles: model.styles,
       };
     });
+  }
+
+  /**
+   * Where the editor finds the files an exercise already has.
+   *
+   * For a saved file Joubel's `H5P.getPath` uses
+   * `H5PIntegration.contents['cid-<id>'].contentUrl` and, when there is none,
+   * falls back to `${url}/content/<id>` — a route this API does not have, so
+   * every image of a reopened exercise showed as a broken thumbnail. An author
+   * who sees that uploads the images again, which is how the exercise in
+   * TASK-63 lost its files. The player's own route and token serve them
+   * instead; `<h5p-editor>` copies this entry into the page's integration
+   * (`mergeH5PIntegration`).
+   */
+  private contentsFor(contentId: string): Record<string, { contentUrl: string }> {
+    return {
+      [`cid-${contentId}`]: {
+        contentUrl: contentFilesUrlFor(
+          this.config.baseUrl,
+          this.tokens.mintPlay(contentId),
+          contentId,
+        ),
+      },
+    };
   }
 
   /**
