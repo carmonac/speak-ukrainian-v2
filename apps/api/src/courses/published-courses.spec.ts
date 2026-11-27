@@ -1,7 +1,6 @@
-import type { CourseSummary } from '@speakukrainian/shared';
 import { describe, expect, it } from 'vitest';
 import type { Clock } from '../infra/clock/clock.tokens.js';
-import type { CoursesService } from './courses.service.js';
+import type { CoursesService, PublishedCourse } from './courses.service.js';
 import { PUBLISHED_COURSES_TTL_MS, PublishedCourses } from './published-courses.js';
 
 function setup() {
@@ -10,9 +9,9 @@ function setup() {
   const calls: boolean[] = [];
   let title = 'A1';
   const service = {
-    list: async (onlyPublished: boolean) => {
-      calls.push(onlyPublished);
-      return [{ title } as CourseSummary];
+    listPublished: async () => {
+      calls.push(true);
+      return [{ title } as PublishedCourse];
     },
   } as unknown as CoursesService;
   return {

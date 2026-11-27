@@ -1,7 +1,7 @@
 import type { ConfigService } from '@nestjs/config';
-import type { CourseSummary } from '@speakukrainian/shared';
 import { describe, expect, it } from 'vitest';
 import type { Env } from '../config/configuration.js';
+import type { PublishedCourse } from '../courses/courses.service.js';
 import { SiteRenderer, usesCourses, type RenderablePage } from './site.renderer.js';
 
 const config = {
@@ -76,7 +76,7 @@ describe('SiteRenderer', () => {
   });
 
   describe('courses', () => {
-    const course: CourseSummary = {
+    const course: PublishedCourse = {
       id: 'c1',
       title: 'Ukrainian <A1>',
       slug: 'ukrainian-a1',
@@ -87,6 +87,8 @@ describe('SiteRenderer', () => {
       currency: 'eur',
       status: 'published',
       lessonCount: 3,
+      description: '<h2>About</h2><p>Learn <em>everything</em>.</p>',
+      descriptionText: 'About Learn everything.',
     };
 
     it('lists the published courses with their summary as HTML', () => {
@@ -101,6 +103,15 @@ describe('SiteRenderer', () => {
         '<a href="https://student.example.com/courses/ukrainian-a1">Ukrainian &lt;A1&gt;</a>|€25.00|3|' +
           '<p><strong>Start</strong> here 👋</p><img src="https://example.com/files/1/a.png" />|Start here 👋',
       );
+    });
+
+    it('gives each course its description as HTML and as plain text', () => {
+      const html = renderer.render(
+        page('{{#each courses}}{{ description }}|{{ descriptionText }}{{/each}}'),
+        ['en'],
+        [course],
+      );
+      expect(html).toBe('<h2>About</h2><p>Learn <em>everything</em>.</p>|About Learn everything.');
     });
 
     it("formats the price in the visitor's language and says when it is free", () => {

@@ -31,6 +31,9 @@ export type SaveSectionInput = z.infer<typeof saveSectionSchema>;
 /** Longest summary accepted, in characters of HTML. */
 export const MAX_COURSE_SUMMARY_LENGTH = 50_000;
 
+/** Longest description accepted, in characters of HTML. */
+export const MAX_COURSE_DESCRIPTION_LENGTH = 50_000;
+
 /** The whole course is saved at once; array order is the display order. */
 export const saveCourseSchema = z.object({
   title: z.string().trim().min(1).max(200),
@@ -40,7 +43,8 @@ export const saveCourseSchema = z.object({
    * sanitizes it before storing it; see `apps/api/src/courses/rich-text.ts`.
    */
   summary: z.string().max(MAX_COURSE_SUMMARY_LENGTH).default(''),
-  description: z.string().max(20_000).default(''),
+  /** Rich text as HTML, sanitized by the API exactly like `summary`. */
+  description: z.string().max(MAX_COURSE_DESCRIPTION_LENGTH).default(''),
   /** Price in minor units (cents). 0 means free. */
   priceCents: z.number().int().min(0).max(100_000_00),
   currency: currencySchema.default('eur'),
@@ -79,12 +83,14 @@ export interface CourseSection {
 }
 
 export interface CourseDetail extends CourseSummary {
+  /** Sanitized HTML, like `summary`. */
   description: string;
   sections: CourseSection[];
 }
 
 /** What a visitor sees before buying: the outline without the exercises. */
 export interface CourseOutline extends CourseSummary {
+  /** Sanitized HTML, like `summary`. */
   description: string;
   sections: Array<{ id: string; title: string; lessons: Array<{ id: string; title: string }> }>;
 }

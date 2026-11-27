@@ -305,3 +305,35 @@ describe('what was left behind', () => {
     );
   });
 });
+
+describe('rich-text conversions', () => {
+  /** Runs one migration again over rows inserted after the schema exists. */
+  function rerun(file: string): void {
+    db.exec(readFileSync(new URL(file, MIGRATIONS_DIR), 'utf8'));
+  }
+
+  it.each([
+    ['0004_course_summary_html.sql', 'summary'],
+    ['0005_course_description_html.sql', 'description'],
+  ])('%s turns a plain-text %s into escaped HTML and leaves an empty one empty', (file, column) => {
+    db.prepare(`insert into courses (id, title, slug, ${column}) values (?, ?, ?, ?)`).run(
+      'c1',
+      'A',
+      'a',
+      ' Tom & "Jerry" <3\r\nNext line ',
+    );
+    db.prepare(`insert into courses (id, title, slug, ${column}) values (?, ?, ?, ?)`).run(
+      'c2',
+      'B',
+      'b',
+      '  ',
+    );
+
+    rerun(file);
+
+    expect(all(`select ${column} as value from courses order by id`)).toEqual([
+      { value: '<p>Tom &amp; &quot;Jerry&quot; &lt;3<br>Next line</p>' },
+      { value: '  ' },
+    ]);
+  });
+});

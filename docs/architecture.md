@@ -124,8 +124,8 @@ it is public: every byte a browser receives is streamed through the API,
 which decides who may read it. Streams are uploaded in 8 MiB parts. Exercises
 are under `h5p/` (see [h5p.md](h5p.md) for the layout); the files uploaded for
 the site's pages are under `site/files/`, and those the API serves to anyone
-at `/files/<id>/<name>`. The pictures and videos added to a course summary in
-the panel's editor are ordinary site files too, so they show up in **Storage**.
+at `/files/<id>/<name>`. The pictures and videos added to a course summary or
+description in the panel's editor are ordinary site files too, so they show up in **Storage**.
 
 ## Accounts and access
 
@@ -246,16 +246,17 @@ the build configuration: `ng serve` copies `config/development/config.json`
   `Content-Security-Policy: sandbox allow-scripts …` and no `allow-same-origin`:
   its scripts run on an origin of their own, without storage, cookies or a way
   back to the window that opened it.
-- The course summary is rich text written in the panel (a Tiptap editor,
-  `apps/admin/src/app/core/rich-text-editor.ts`) and shown to everyone: in the
-  student app with `[innerHTML]`, on the public site through `{{ summary }}`.
+- The course summary and description are rich text written in the panel (a
+  Tiptap editor, `apps/admin/src/app/core/rich-text-editor.ts`) and shown to
+  everyone: in the student app with `[innerHTML]`, on the public site through
+  `{{ summary }}` and `{{ description }}`.
   So it is stored as HTML that `apps/api/src/courses/rich-text.ts` has
   sanitized against an allowlist (paragraphs, two heading levels, bold,
   italic, underline, strike, lists, quotes, links, `img`, `video`; `http`/
   `https` addresses, plus `mailto` for links; no styles, classes or event
   handlers) before it reaches the database. Anything that cannot show HTML —
-  course cards, Stripe Checkout, meta tags — uses `summaryText`, the plain
-  text the API derives from it.
+  course cards, Stripe Checkout, meta tags — uses `summaryText` (or
+  `descriptionText`), the plain text the API derives from it.
 - Site files share the private bucket with the exercises but live under their
   own prefix, `site/files/<id>/<name>`. The public route accepts exactly that
   shape (a UUID and one file name) and the administrator's list and delete

@@ -46,7 +46,8 @@ import { SessionStore } from '../../core/session.store';
             }
             @if (current.description) {
               <nz-card nzTitle="About this course" class="block">
-                <p class="description">{{ current.description }}</p>
+                <!-- Sanitized by the API on save, like the summary. -->
+                <div class="description rich-text" [innerHTML]="current.description"></div>
               </nz-card>
             }
 
@@ -144,9 +145,11 @@ import { SessionStore } from '../../core/session.store';
       color: rgba(0, 0, 0, 0.75);
       margin-bottom: 16px;
     }
-    .description {
-      white-space: pre-line;
-      margin: 0;
+    .description > :first-child {
+      margin-top: 0;
+    }
+    .description > :last-child {
+      margin-bottom: 0;
     }
     .section {
       font-size: 15px;

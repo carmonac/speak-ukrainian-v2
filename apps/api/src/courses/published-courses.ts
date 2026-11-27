@@ -1,7 +1,6 @@
 import { Inject, Injectable } from '@nestjs/common';
-import type { CourseSummary } from '@speakukrainian/shared';
 import { CLOCK, type Clock } from '../infra/clock/clock.tokens.js';
-import { CoursesService } from './courses.service.js';
+import { CoursesService, type PublishedCourse } from './courses.service.js';
 
 /** How long the list is served from memory before the database is asked again. */
 export const PUBLISHED_COURSES_TTL_MS = 60_000;
@@ -18,8 +17,8 @@ export const PUBLISHED_COURSES_TTL_MS = 60_000;
  */
 @Injectable()
 export class PublishedCourses {
-  private cached: { courses: CourseSummary[]; expiresAt: number } | null = null;
-  private loading: Promise<CourseSummary[]> | null = null;
+  private cached: { courses: PublishedCourse[]; expiresAt: number } | null = null;
+  private loading: Promise<PublishedCourse[]> | null = null;
   private generation = 0;
 
   constructor(
@@ -27,7 +26,7 @@ export class PublishedCourses {
     @Inject(CLOCK) private readonly clock: Clock,
   ) {}
 
-  async get(): Promise<CourseSummary[]> {
+  async get(): Promise<PublishedCourse[]> {
     if (this.cached && this.cached.expiresAt > this.clock.now()) {
       return this.cached.courses;
     }
@@ -36,7 +35,7 @@ export class PublishedCourses {
     }
     const generation = this.generation;
     const load = this.courses
-      .list(true)
+      .listPublished()
       .then((courses) => {
         if (generation === this.generation) {
           this.cached = { courses, expiresAt: this.clock.now() + PUBLISHED_COURSES_TTL_MS };

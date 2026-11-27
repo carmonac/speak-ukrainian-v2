@@ -149,9 +149,9 @@ function escapeHtml(text: string): string {
 }
 
 /**
- * The summary as it is stored: sanitized HTML. Text with no markup at all (an
- * older client, or a script) is taken as plain text and turned into
- * paragraphs instead of being read as HTML.
+ * A rich-text field (the summary, the description) as it is stored: sanitized
+ * HTML. Text with no markup at all (an older client, or a script) is taken as
+ * plain text and turned into paragraphs instead of being read as HTML.
  */
 export function toStoredRichText(input: string): string {
   return /<[a-z!/]/i.test(input) ? sanitizeRichText(input) : plainTextToRichText(input);

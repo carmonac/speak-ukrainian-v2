@@ -56,19 +56,22 @@ These names are reserved: a text with the same name is ignored.
 `courses` holds every published course, in alphabetical order. Inside
 `{{#each courses}}` each one has:
 
-| Name                | Value                                                                        |
-| ------------------- | ---------------------------------------------------------------------------- |
-| `{{ title }}`       | The course title                                                             |
-| `{{ url }}`         | Its page in the student classroom, where it is bought                        |
-| `{{ price }}`       | The price in the visitor's language, e.g. `€25.00`, or `Free`                |
-| `{{ free }}`        | True for a free course, for `{{#if free}}`                                   |
-| `{{ lessonCount }}` | Number of lessons                                                            |
-| `{{ summary }}`     | The summary as written in the course editor: formatting, pictures and videos |
-| `{{ summaryText }}` | The summary's words only, shortened — for a small card or a `<meta>` tag     |
-| `{{ slug }}`        | The course's URL name                                                        |
+| Name                    | Value                                                                        |
+| ----------------------- | ---------------------------------------------------------------------------- |
+| `{{ title }}`           | The course title                                                             |
+| `{{ url }}`             | Its page in the student classroom, where it is bought                        |
+| `{{ price }}`           | The price in the visitor's language, e.g. `€25.00`, or `Free`                |
+| `{{ free }}`            | True for a free course, for `{{#if free}}`                                   |
+| `{{ lessonCount }}`     | Number of lessons                                                            |
+| `{{ summary }}`         | The summary as written in the course editor: formatting, pictures and videos |
+| `{{ summaryText }}`     | The summary's words only, shortened — for a small card or a `<meta>` tag     |
+| `{{ description }}`     | The longer description, formatted like the summary                           |
+| `{{ descriptionText }}` | The description's words only, shortened                                      |
+| `{{ slug }}`            | The course's URL name                                                        |
 
-`{{ summary }}` is written as HTML even with double braces: it is cleaned when
-the course is saved, so it is safe as it is. For example:
+`{{ summary }}` and `{{ description }}` are written as HTML even with double
+braces: they are cleaned when the course is saved, so they are safe as they
+are. For example:
 
 ```handlebars
 {{#each courses}}

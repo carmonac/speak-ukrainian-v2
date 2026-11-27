@@ -66,16 +66,13 @@
 
       <nz-form-item>
         <nz-form-label nzFor="description">Description</nz-form-label>
-        <nz-form-control nzExtra="Shown on the course page before buying.">
-          <textarea
-            nz-input
-            id="description"
-            name="description"
-            cdkTextareaAutosize
-            [cdkAutosizeMinRows]="4"
-            [cdkAutosizeMaxRows]="16"
-            [(ngModel)]="form().description"
-          ></textarea>
+        <nz-form-control nzExtra="Shown on the course page before buying, under “About this course”.">
+          <app-rich-text-editor
+            inputId="description"
+            placeholder="Tell students about the course: who it is for, how it works, what they need."
+            [value]="form().description"
+            (valueChange)="form().description = $event"
+          />
         </nz-form-control>
       </nz-form-item>
 

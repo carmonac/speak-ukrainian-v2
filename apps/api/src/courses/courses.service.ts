@@ -19,6 +19,14 @@ import {
 import { H5pService } from '../h5p/h5p.service.js';
 import { richTextToPlain, toStoredRichText } from './rich-text.js';
 
+/** A published course as the public site's templates receive it. */
+export interface PublishedCourse extends CourseSummary {
+  /** Sanitized HTML. */
+  description: string;
+  /** The description's text alone, shortened. */
+  descriptionText: string;
+}
+
 interface CourseRow {
   id: string;
   title: string;
@@ -71,6 +79,22 @@ export class CoursesService {
     private readonly h5p: H5pService,
   ) {}
 
+  /**
+   * The published courses with their descriptions, for the public site's
+   * templates (`PublishedCourses`). The admin and catalogue lists leave the
+   * description out: it can be long, and they never show it.
+   */
+  async listPublished(): Promise<PublishedCourse[]> {
+    const rows = await this.db.rows<CourseRow>(
+      `${COURSE_SELECT} where c.status = 'published' order by c.title`,
+    );
+    return rows.map((row) => ({
+      ...toCourseSummary(row),
+      description: row.description,
+      descriptionText: richTextToPlain(row.description),
+    }));
+  }
+
   async list(onlyPublished = false): Promise<CourseSummary[]> {
     const rows = await this.db.rows<CourseRow>(
       `${COURSE_SELECT} ${onlyPublished ? `where c.status = 'published'` : ''} order by c.title`,
@@ -119,7 +143,7 @@ export class CoursesService {
             input.title,
             input.slug,
             toStoredRichText(input.summary),
-            input.description,
+            toStoredRichText(input.description),
             input.priceCents,
             input.currency,
             input.status,
@@ -150,7 +174,7 @@ export class CoursesService {
             input.title,
             input.slug,
             toStoredRichText(input.summary),
-            input.description,
+            toStoredRichText(input.description),
             input.priceCents,
             input.currency,
             input.status,

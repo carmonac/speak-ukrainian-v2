@@ -67,7 +67,7 @@ describe('CoursesService', () => {
       // Plain text is stored as a paragraph of rich text.
       summary: '<p>Start here</p>',
       summaryText: 'Start here',
-      description: 'The long text',
+      description: '<p>The long text</p>',
       priceCents: 2500,
       currency: 'eur',
       status: 'published',
@@ -103,6 +103,32 @@ describe('CoursesService', () => {
       ['Ukrainian A1', 1],
     ]);
     expect((await service.list(true)).map((c) => c.slug)).toEqual(['ukrainian-a1']);
+  });
+
+  it('stores the description as sanitized rich text, like the summary', async () => {
+    const created = await service.create(
+      course({ description: '<p>Hi <strong>there</strong></p><script>alert(1)</script>' }),
+    );
+    const plain = await service.create(
+      course({ title: 'Plain', slug: 'plain', description: 'Line one\n\nLine two & three' }),
+    );
+
+    expect((await service.findById(created.id)).description).toBe(
+      '<p>Hi <strong>there</strong></p>',
+    );
+    expect((await service.findById(plain.id)).description).toBe(
+      '<p>Line one</p><p>Line two &amp; three</p>',
+    );
+  });
+
+  it('lists published courses for the site with their description', async () => {
+    await service.create(course({ description: '<p>About <em>it</em></p>' }));
+    await service.create(course({ title: 'Draft', slug: 'draft', status: 'draft' }));
+
+    const published = await service.listPublished();
+    expect(published.map((c) => [c.slug, c.description, c.descriptionText])).toEqual([
+      ['ukrainian-a1', '<p>About <em>it</em></p>', 'About it'],
+    ]);
   });
 
   it('shows the outline of a published course without exercises, and hides drafts', async () => {

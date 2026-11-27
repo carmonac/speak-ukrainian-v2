@@ -5,10 +5,10 @@ import {
   FALLBACK_LOCALE,
   formatPrice,
   resolveTranslation,
-  type CourseSummary,
   type PageText,
 } from '@speakukrainian/shared';
 import type { Env } from '../config/configuration.js';
+import type { PublishedCourse } from '../courses/courses.service.js';
 
 export interface RenderablePage {
   title: string;
@@ -48,6 +48,10 @@ export interface SiteCourse {
   summary: Handlebars.SafeString;
   /** The summary as one line of plain text, for a short card or a meta tag. */
   summaryText: string;
+  /** The formatted description, sanitized like the summary. */
+  description: Handlebars.SafeString;
+  /** The description as one line of plain text. */
+  descriptionText: string;
 }
 
 /**
@@ -91,7 +95,7 @@ export class SiteRenderer {
   render(
     page: RenderablePage,
     locales: ReadonlyArray<string>,
-    courses: ReadonlyArray<CourseSummary> = [],
+    courses: ReadonlyArray<PublishedCourse> = [],
   ): string {
     const template = this.templateFor(page.content);
     const locale = locales[0] ?? FALLBACK_LOCALE;
@@ -122,7 +126,7 @@ export class SiteRenderer {
   renderSafely(
     page: RenderablePage,
     locales: ReadonlyArray<string>,
-    courses: ReadonlyArray<CourseSummary> = [],
+    courses: ReadonlyArray<PublishedCourse> = [],
   ): RenderResult {
     try {
       return { html: this.render(page, locales, courses), ok: true };
@@ -137,7 +141,7 @@ export class SiteRenderer {
     return errorPage('Page not found', 'The page you are looking for does not exist.');
   }
 
-  private siteCourse(course: CourseSummary, locale: string): SiteCourse {
+  private siteCourse(course: PublishedCourse, locale: string): SiteCourse {
     let price: string;
     try {
       price = formatPrice(course.priceCents, course.currency, locale);
@@ -155,6 +159,8 @@ export class SiteRenderer {
       // Sanitized by the API when it was saved (see courses/rich-text.ts).
       summary: new Handlebars.SafeString(course.summary),
       summaryText: course.summaryText,
+      description: new Handlebars.SafeString(course.description),
+      descriptionText: course.descriptionText,
     };
   }
 
