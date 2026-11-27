@@ -161,7 +161,8 @@ e-mails a reset link.
 Production does not need the key to start. Until it is set the API boots
 normally and logs a warning, paid courses cannot be bought (the checkout
 answers 503 "Payments are not available yet") and free courses work. Prices are set per
-course in the control panel; no products need to exist in Stripe.
+course in the control panel, and so are discount coupons (Coupons in the
+menu); no products or Stripe coupons need to exist in Stripe.
 
 ## Checks after a deploy
 

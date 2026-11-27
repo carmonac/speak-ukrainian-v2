@@ -11,6 +11,7 @@ const MIGRATIONS_DIR = new URL('../migrations/', import.meta.url);
 
 const APPLICATION_TABLES = [
   'course_sections',
+  'coupons',
   'courses',
   'email_log',
   'enrollments',
@@ -58,7 +59,7 @@ beforeEach(() => {
 });
 
 describe('schema', () => {
-  it('creates the 14 application tables and the authentication tables', () => {
+  it('creates the 15 application tables and the authentication tables', () => {
     const names = all<{ name: string }>(
       "select name from sqlite_master where type = 'table' and name not like 'sqlite_%' order by name",
     ).map((r) => r.name);
@@ -335,5 +336,45 @@ describe('rich-text conversions', () => {
       { value: '<p>Tom &amp; &quot;Jerry&quot; &lt;3<br>Next line</p>' },
       { value: '  ' },
     ]);
+  });
+});
+
+describe('coupons', () => {
+  const insert = (code: string, percent: number, starts: string, ends: string) =>
+    db
+      .prepare('insert into coupons (code, percent_off, starts_on, ends_on) values (?, ?, ?, ?)')
+      .run(code, percent, starts, ends);
+
+  it('keeps codes unique whatever their case', () => {
+    insert('SPRING', 10, '2026-03-01', '2026-03-31');
+    expect(() => insert('spring', 20, '2026-04-01', '2026-04-30')).toThrow(/UNIQUE/);
+  });
+
+  it('checks the percentage and the date range', () => {
+    expect(() => insert('ZERO', 0, '2026-01-01', '2026-01-02')).toThrow(/CHECK/);
+    expect(() => insert('MORE', 101, '2026-01-01', '2026-01-02')).toThrow(/CHECK/);
+    expect(() => insert('BACKWARDS', 10, '2026-02-01', '2026-01-01')).toThrow(/CHECK/);
+    expect(() => insert('NOTADATE', 10, '1 March', '2026-01-01')).toThrow(/CHECK/);
+    expect(() => insert('ONEDAY', 100, '2026-01-01', '2026-01-01')).not.toThrow();
+  });
+
+  it('lets an order record the coupon it was sold with', () => {
+    addUser('u1');
+    db.exec(
+      "insert into courses (id, title, slug, price_cents, currency) values ('c1', 'A1', 'a1', 2000, 'eur')",
+    );
+    db.exec(
+      `insert into orders (user_id, course_id, amount_cents, currency, coupon_code, discount_percent)
+       values ('u1', 'c1', 1500, 'eur', 'SPRING', 25)`,
+    );
+    expect(one('select coupon_code, discount_percent from orders')).toEqual({
+      coupon_code: 'SPRING',
+      discount_percent: 25,
+    });
+    expect(() =>
+      db.exec(
+        "insert into orders (user_id, course_id, amount_cents, currency, discount_percent) values ('u1', 'c1', 0, 'eur', 0)",
+      ),
+    ).toThrow(/CHECK/);
   });
 });

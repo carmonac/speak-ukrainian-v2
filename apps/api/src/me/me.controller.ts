@@ -1,12 +1,15 @@
 import { Body, Controller, Get, HttpCode, HttpStatus, Param, Patch, Post } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import {
+  checkoutQuoteSchema,
   checkoutSchema,
   idSchema,
   lessonResultSchema,
   sendMessageSchema,
   updateMyProfileSchema,
   type CheckoutInput,
+  type CheckoutQuote,
+  type CheckoutQuoteInput,
   type CheckoutResult,
   type LessonProgress,
   type LessonResultInput,
@@ -67,7 +70,16 @@ export class MeController {
     @CurrentUser() user: AuthenticatedUser,
     @Body(new ZodValidationPipe(checkoutSchema)) body: CheckoutInput,
   ): Promise<CheckoutResult> {
-    return this.payments.checkout(user, body.courseId);
+    return this.payments.checkout(user, body.courseId, body.couponCode);
+  }
+
+  /** What a course costs with a coupon; nothing is bought. */
+  @Post('checkout/quote')
+  @HttpCode(HttpStatus.OK)
+  quote(
+    @Body(new ZodValidationPipe(checkoutQuoteSchema)) body: CheckoutQuoteInput,
+  ): Promise<CheckoutQuote> {
+    return this.payments.quote(body.courseId, body.couponCode);
   }
 
   @Post('lessons/:id/result')

@@ -1,6 +1,7 @@
 import { Injectable, inject } from '@angular/core';
 import type { Observable } from 'rxjs';
 import type {
+  CheckoutQuote,
   CheckoutResult,
   CourseOutline,
   CourseSummary,
@@ -41,8 +42,11 @@ export class StudentApi {
   myCourse(id: string): Observable<MyCourseDetail> {
     return this.api.get(`/me/courses/${id}`);
   }
-  checkout(courseId: string): Observable<CheckoutResult> {
-    return this.api.post('/me/checkout', { courseId });
+  checkout(courseId: string, couponCode?: string): Observable<CheckoutResult> {
+    return this.api.post('/me/checkout', { courseId, ...(couponCode ? { couponCode } : {}) });
+  }
+  checkoutQuote(courseId: string, couponCode: string): Observable<CheckoutQuote> {
+    return this.api.post('/me/checkout/quote', { courseId, couponCode });
   }
   recordResult(lessonId: string, result: LessonResultInput): Observable<LessonProgress> {
     return this.api.post(`/me/lessons/${lessonId}/result`, result);

@@ -7,6 +7,7 @@ import { SessionAuthGuard } from './auth/session-auth.guard.js';
 import { CacheControlInterceptor } from './common/cache-control.interceptor.js';
 import { HttpExceptionFilter } from './common/http-exception.filter.js';
 import { validateEnv } from './config/configuration.js';
+import { CouponsModule } from './coupons/coupons.module.js';
 import { CoursesModule } from './courses/courses.module.js';
 import { DashboardController } from './dashboard/dashboard.controller.js';
 import { EmailModule } from './email/email.module.js';
@@ -50,6 +51,7 @@ import { UsersModule } from './users/users.module.js';
     FilesModule,
     PagesModule,
     CoursesModule,
+    CouponsModule,
     PaymentsModule,
     UsersModule,
     MeModule,

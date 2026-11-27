@@ -2,6 +2,8 @@ import { Injectable, inject } from '@angular/core';
 import type { Observable } from 'rxjs';
 import type {
   ConversationSummary,
+  Coupon,
+  CouponInput,
   CourseDetail,
   CourseSummary,
   DashboardStats,
@@ -114,5 +116,19 @@ export class AdminApi {
   }
   markRead(userId: string): Observable<void> {
     return this.api.post(`/admin/users/${userId}/messages/read`, null);
+  }
+
+  // Coupons
+  coupons(): Observable<Coupon[]> {
+    return this.api.get('/admin/coupons');
+  }
+  createCoupon(input: CouponInput): Observable<Coupon> {
+    return this.api.post('/admin/coupons', input);
+  }
+  updateCoupon(id: string, input: CouponInput): Observable<Coupon> {
+    return this.api.patch(`/admin/coupons/${id}`, input);
+  }
+  deleteCoupon(id: string): Observable<void> {
+    return this.api.delete(`/admin/coupons/${id}`);
   }
 }

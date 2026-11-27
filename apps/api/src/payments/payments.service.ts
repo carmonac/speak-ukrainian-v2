@@ -8,9 +8,10 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import Stripe from 'stripe';
-import type { CheckoutResult } from '@speakukrainian/shared';
+import { discountedPrice, type CheckoutQuote, type CheckoutResult } from '@speakukrainian/shared';
 import type { AuthenticatedUser } from '../auth/authenticated-user.js';
 import type { Env } from '../config/configuration.js';
+import { CouponsService, type RedeemableCoupon } from '../coupons/coupons.service.js';
 import { richTextToPlain } from '../courses/rich-text.js';
 import { DatabaseService, now } from '../infra/db/database.service.js';
 
@@ -23,6 +24,12 @@ interface CourseForSale {
   currency: string;
 }
 
+/** What one purchase costs: the course price, less a coupon's discount. */
+interface Pricing {
+  amountCents: number;
+  coupon: RedeemableCoupon | null;
+}
+
 /**
  * Selling courses with Stripe Checkout.
  *
@@ -32,6 +39,9 @@ interface CourseForSale {
  * Without a Stripe key a purchase completes instantly outside production, so
  * the whole classroom can be exercised locally. In production a paid course
  * cannot be bought without one; free courses always can.
+ *
+ * The amount is always worked out here, from the course price and a coupon
+ * this service checked itself; the browser only ever sends the code.
  */
 @Injectable()
 export class PaymentsService {
@@ -44,6 +54,7 @@ export class PaymentsService {
   constructor(
     private readonly db: DatabaseService,
     config: ConfigService<Env, true>,
+    private readonly coupons: CouponsService,
   ) {
     const key = config.get('STRIPE_SECRET_KEY', { infer: true });
     this.stripe = key ? new Stripe(key) : null;
@@ -59,15 +70,28 @@ export class PaymentsService {
     }
   }
 
-  async checkout(user: AuthenticatedUser, courseId: string): Promise<CheckoutResult> {
-    const course = await this.db.one<CourseForSale>(
-      `select id, title, slug, summary, price_cents, currency
-       from courses where id = ?1 and status = 'published'`,
-      [courseId],
-    );
-    if (!course) {
-      throw new NotFoundException('That course is not available.');
+  /** The price of a course with a coupon, for the buy box. Changes nothing. */
+  async quote(courseId: string, couponCode: string): Promise<CheckoutQuote> {
+    const course = await this.courseForSale(courseId);
+    if (course.price_cents === 0) {
+      throw new BadRequestException('This course is free: no coupon is needed.');
     }
+    const { amountCents, coupon } = await this.price(course, couponCode);
+    return {
+      couponCode: coupon!.code,
+      percentOff: coupon!.percentOff,
+      priceCents: course.price_cents,
+      discountedCents: amountCents,
+      currency: course.currency,
+    };
+  }
+
+  async checkout(
+    user: AuthenticatedUser,
+    courseId: string,
+    couponCode?: string,
+  ): Promise<CheckoutResult> {
+    const course = await this.courseForSale(courseId);
 
     const owned = await this.db.one(
       'select 1 from enrollments where user_id = ?1 and course_id = ?2',
@@ -77,8 +101,10 @@ export class PaymentsService {
       throw new ConflictException('You already own this course.');
     }
 
+    const pricing = await this.price(course, couponCode);
+
     // Never in production: without Stripe a paid course would be given away.
-    if (course.price_cents > 0 && !this.stripe && this.production) {
+    if (pricing.amountCents > 0 && !this.stripe && this.production) {
       throw new ServiceUnavailableException(
         'Payments are not available yet. Please try again later.',
       );
@@ -86,17 +112,16 @@ export class PaymentsService {
 
     const courseUrl = `${this.studentUrl}/my-courses/${course.id}`;
 
-    if (course.price_cents === 0 || !this.stripe) {
-      const order = await this.createOrder(
-        user.uid,
-        course,
-        course.price_cents === 0 ? 'free' : 'dev',
-      );
+    // Nothing to pay (a free course, or a 100% coupon) needs no payment page.
+    if (pricing.amountCents === 0 || !this.stripe) {
+      const provider =
+        course.price_cents === 0 ? 'free' : pricing.amountCents === 0 ? 'coupon' : 'dev';
+      const order = await this.createOrder(user.uid, course, pricing, provider);
       await this.fulfil(order);
       return { url: courseUrl, enrolled: true };
     }
 
-    const orderId = await this.createOrder(user.uid, course, 'stripe');
+    const orderId = await this.createOrder(user.uid, course, pricing, 'stripe');
     const summaryText = richTextToPlain(course.summary);
     const session = await this.stripe.checkout.sessions.create({
       mode: 'payment',
@@ -107,9 +132,11 @@ export class PaymentsService {
           quantity: 1,
           price_data: {
             currency: course.currency,
-            unit_amount: course.price_cents,
+            unit_amount: pricing.amountCents,
             product_data: {
-              name: course.title,
+              name: pricing.coupon
+                ? `${course.title} (${pricing.coupon.percentOff}% off with ${pricing.coupon.code})`
+                : course.title,
               // Stripe shows text only; the summary is HTML.
               ...(summaryText ? { description: summaryText } : {}),
             },
@@ -183,15 +210,46 @@ export class PaymentsService {
     await this.fulfil(order.id);
   }
 
+  private async courseForSale(courseId: string): Promise<CourseForSale> {
+    const course = await this.db.one<CourseForSale>(
+      `select id, title, slug, summary, price_cents, currency
+       from courses where id = ?1 and status = 'published'`,
+      [courseId],
+    );
+    if (!course) {
+      throw new NotFoundException('That course is not available.');
+    }
+    return course;
+  }
+
+  /** A free course ignores any coupon; a paid one is checked and discounted. */
+  private async price(course: CourseForSale, couponCode: string | undefined): Promise<Pricing> {
+    if (!couponCode || course.price_cents === 0) {
+      return { amountCents: course.price_cents, coupon: null };
+    }
+    const coupon = await this.coupons.redeemable(couponCode);
+    return { amountCents: discountedPrice(course.price_cents, coupon.percentOff), coupon };
+  }
+
   private async createOrder(
     userId: string,
     course: CourseForSale,
+    pricing: Pricing,
     provider: string,
   ): Promise<string> {
     const row = await this.db.one<{ id: string }>(
-      `insert into orders (user_id, course_id, amount_cents, currency, provider)
-       values (?1, ?2, ?3, ?4, ?5) returning id`,
-      [userId, course.id, course.price_cents, course.currency, provider],
+      `insert into orders (user_id, course_id, amount_cents, currency, provider,
+                           coupon_code, discount_percent)
+       values (?1, ?2, ?3, ?4, ?5, ?6, ?7) returning id`,
+      [
+        userId,
+        course.id,
+        pricing.amountCents,
+        course.currency,
+        provider,
+        pricing.coupon?.code ?? null,
+        pricing.coupon?.percentOff ?? null,
+      ],
     );
     return row!.id;
   }

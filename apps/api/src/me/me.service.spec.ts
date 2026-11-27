@@ -12,6 +12,7 @@ import { CoursesService } from '../courses/courses.service.js';
 import type { H5pService } from '../h5p/h5p.service.js';
 import { createTestDatabase, type TestDatabase } from '../infra/db/sqlite.test-driver.js';
 import { PaymentsService } from '../payments/payments.service.js';
+import { CouponsService } from '../coupons/coupons.service.js';
 import { MeService } from './me.service.js';
 
 const ISO = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
@@ -34,7 +35,11 @@ describe('student flows: checkout, my courses, progress', () => {
     t = createTestDatabase();
     t.addUser('u1', { fullName: 'Ana' });
     courses = new CoursesService(t.db, { remove: async () => undefined } as unknown as H5pService);
-    payments = new PaymentsService(t.db, config);
+    payments = new PaymentsService(
+      t.db,
+      config,
+      new CouponsService(t.db, { now: () => Date.now() }),
+    );
     me = new MeService(t.db, courses);
 
     const created = await courses.create({
@@ -134,7 +139,11 @@ describe('student flows: checkout, my courses, progress', () => {
     } as unknown as ConfigService<Env, true>;
 
     it('refuses a paid course instead of giving it away, and writes nothing', async () => {
-      const production = new PaymentsService(t.db, productionConfig);
+      const production = new PaymentsService(
+        t.db,
+        productionConfig,
+        new CouponsService(t.db, { now: () => Date.now() }),
+      );
       await expect(production.checkout(student, courseId)).rejects.toBeInstanceOf(
         ServiceUnavailableException,
       );
@@ -144,7 +153,11 @@ describe('student flows: checkout, my courses, progress', () => {
 
     it('still enrolls in a free course', async () => {
       t.all(`update courses set price_cents = 0 where id = ? returning id`, courseId);
-      const production = new PaymentsService(t.db, productionConfig);
+      const production = new PaymentsService(
+        t.db,
+        productionConfig,
+        new CouponsService(t.db, { now: () => Date.now() }),
+      );
       expect((await production.checkout(student, courseId)).enrolled).toBe(true);
       expect(t.all('select provider, status from orders')).toEqual([
         { provider: 'free', status: 'paid' },

@@ -112,7 +112,8 @@ What is different from a classic SQL connection, and shapes the API's code
 | `page_views`                                 | One row per visitor per day (`visitor_hash`), for the dashboard counter.                                         |
 | `h5p_content`                                | Index of stored exercises. Files live in R2 under `h5p/content/<id>/`.                                           |
 | `courses` → `course_sections` → `lessons`    | Course structure. A lesson optionally points at one `h5p_content` row.                                           |
-| `orders`                                     | One per checkout: amount, provider (`stripe`, `free`, `dev`), status.                                            |
+| `orders`                                     | One per checkout: amount charged, provider (`stripe`, `free`, `coupon`, `dev`), status, coupon code and percent. |
+| `coupons`                                    | Discount codes: percentage off and the first and last UTC day they work. Orders copy what they used.             |
 | `enrollments`                                | Who owns which course. Created when an order is paid.                                                            |
 | `lesson_progress`                            | Per student and lesson: completion time and best score.                                                          |
 | `messages`                                   | The chat: one thread per student (`student_id`), `sender` is `admin` or `student`, optional `lesson_id` context. |
@@ -155,19 +156,20 @@ the API (`apps/api/src/auth/auth.ts`) and stored in D1. Its routes are under
 
 ## Modules of the API
 
-| Module           | Routes                                                                      | Notes                                                                                                                |
-| ---------------- | --------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
-| `auth`           | `/api/auth/*`, `/api/admin/account`                                         | better-auth, the guards, the first-run administrator.                                                                |
-| `pages` + `site` | `/api/admin/pages/*`, `/api/preview/:token`, `GET /*`                       | CRUD and preview; `SiteRenderer` compiles templates, `SiteService` serves them and counts visitors.                  |
-| `files`          | `/api/admin/files`, `GET /files/:id/:name`                                  | Files for the pages: upload, list and delete for the administrator; `SiteService` serves them to everyone.           |
-| `courses`        | `/api/admin/courses/*`, `/api/admin/lessons/:id/exercise`, `/api/courses/*` | The whole course tree is saved in one batch. The public routes expose only published courses and only their outline. |
-| `h5p`            | `/api/h5p/*`                                                                | See [h5p.md](h5p.md).                                                                                                |
-| `payments`       | `/api/me/checkout`, `/api/payments/stripe/webhook`                          | Enrollment is created by the signed webhook, never by the browser returning from Stripe. Idempotent.                 |
-| `me`             | `/api/me/*`                                                                 | The signed-in student: profile, owned courses, lesson results, chat.                                                 |
-| `users`          | `/api/admin/users/*`, `/api/admin/conversations`                            | User list and detail, sending e-mail, the admin side of the chat.                                                    |
-| `messages`       | `/api/internal/chat-reminders`                                              | Threads, read state, and the reminder job.                                                                           |
-| `email`          | (service)                                                                   | Cloudflare Email Sending through the bridge, or the log when delivery is off.                                        |
-| `dashboard`      | `/api/admin/dashboard`                                                      | Counters and the sales list.                                                                                         |
+| Module           | Routes                                                                       | Notes                                                                                                                |
+| ---------------- | ---------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
+| `auth`           | `/api/auth/*`, `/api/admin/account`                                          | better-auth, the guards, the first-run administrator.                                                                |
+| `pages` + `site` | `/api/admin/pages/*`, `/api/preview/:token`, `GET /*`                        | CRUD and preview; `SiteRenderer` compiles templates, `SiteService` serves them and counts visitors.                  |
+| `files`          | `/api/admin/files`, `GET /files/:id/:name`                                   | Files for the pages: upload, list and delete for the administrator; `SiteService` serves them to everyone.           |
+| `courses`        | `/api/admin/courses/*`, `/api/admin/lessons/:id/exercise`, `/api/courses/*`  | The whole course tree is saved in one batch. The public routes expose only published courses and only their outline. |
+| `h5p`            | `/api/h5p/*`                                                                 | See [h5p.md](h5p.md).                                                                                                |
+| `payments`       | `/api/me/checkout`, `/api/me/checkout/quote`, `/api/payments/stripe/webhook` | Enrollment is created by the signed webhook, never by the browser returning from Stripe. Idempotent.                 |
+| `coupons`        | `/api/admin/coupons/*`                                                       | Discount codes for the administrator; `PaymentsService` checks a student's code and prices the order with it.        |
+| `me`             | `/api/me/*`                                                                  | The signed-in student: profile, owned courses, lesson results, chat.                                                 |
+| `users`          | `/api/admin/users/*`, `/api/admin/conversations`                             | User list and detail, sending e-mail, the admin side of the chat.                                                    |
+| `messages`       | `/api/internal/chat-reminders`                                               | Threads, read state, and the reminder job.                                                                           |
+| `email`          | (service)                                                                    | Cloudflare Email Sending through the bridge, or the log when delivery is off.                                        |
+| `dashboard`      | `/api/admin/dashboard`                                                       | Counters and the sales list.                                                                                         |
 
 ### E-mail
 
@@ -201,6 +203,16 @@ Stripe Checkout. Without `STRIPE_SECRET_KEY`, outside production a purchase
 completes instantly so the classroom can be exercised locally; in production
 the API still boots, a paid course cannot be bought (503) and free courses
 still can. The key is deliberately not required by the environment validation.
+
+**Coupons.** The student may type a coupon code in the buy box. `POST
+/api/me/checkout/quote` shows the discounted price; the checkout itself sends
+only the code, and the API checks it again and works out the amount (course
+price less the percentage, rounded to the cent). Coupons work from their first
+to their last day inclusive, in UTC; codes are stored upper-case and matched
+without case. A 100% coupon enrolls the student at once without Stripe
+(provider `coupon`), even when payments are not configured. The order copies
+the code and the percentage, so editing or deleting a coupon never changes a
+past purchase.
 
 ### Public pages are served from memory
 

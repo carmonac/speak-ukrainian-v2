@@ -59,6 +59,10 @@ export const routes: Routes = [
         loadComponent: () => import('./features/account/account-page').then((m) => m.AccountPage),
       },
       {
+        path: 'coupons',
+        loadComponent: () => import('./features/coupons/coupons-page').then((m) => m.CouponsPage),
+      },
+      {
         path: 'storage',
         loadComponent: () => import('./features/storage/storage-page').then((m) => m.StoragePage),
       },

@@ -5,9 +5,16 @@ import { firstValueFrom } from 'rxjs';
 import { NzAlertModule } from 'ng-zorro-antd/alert';
 import { NzButtonModule } from 'ng-zorro-antd/button';
 import { NzCardModule } from 'ng-zorro-antd/card';
+import { FormsModule } from '@angular/forms';
 import { NzIconModule } from 'ng-zorro-antd/icon';
+import { NzInputModule } from 'ng-zorro-antd/input';
 import { NzSpinModule } from 'ng-zorro-antd/spin';
-import { formatPrice, type CourseOutline } from '@speakukrainian/shared';
+import {
+  couponCodeSchema,
+  formatPrice,
+  type CheckoutQuote,
+  type CourseOutline,
+} from '@speakukrainian/shared';
 import { StudentApi } from '../../core/api';
 import { AuthService } from '../../core/auth.service';
 import { errorMessage } from '../../core/http';
@@ -16,7 +23,16 @@ import { SessionStore } from '../../core/session.store';
 /** A course before buying: description, outline, price and the buy button. */
 @Component({
   selector: 'app-course-page',
-  imports: [RouterLink, NzCardModule, NzButtonModule, NzIconModule, NzAlertModule, NzSpinModule],
+  imports: [
+    FormsModule,
+    RouterLink,
+    NzCardModule,
+    NzButtonModule,
+    NzIconModule,
+    NzInputModule,
+    NzAlertModule,
+    NzSpinModule,
+  ],
   template: `
     <p>
       <a routerLink="/courses"><nz-icon nzType="arrow-left" /> All courses</a>
@@ -67,7 +83,24 @@ import { SessionStore } from '../../core/session.store';
 
           <aside>
             <nz-card class="buy">
-              <div class="price">{{ price(current.priceCents, current.currency) }}</div>
+              @if (quote(); as q) {
+                <div class="price">
+                  <s class="was">{{ price(q.priceCents, q.currency) }}</s>
+                  {{ q.discountedCents === 0 ? 'Free' : price(q.discountedCents, q.currency) }}
+                </div>
+                <p class="applied">
+                  {{ q.percentOff }}% off with <strong>{{ q.couponCode }}</strong> ·
+                  <a
+                    role="button"
+                    tabindex="0"
+                    (click)="removeCoupon()"
+                    (keydown.enter)="removeCoupon()"
+                    >Remove</a
+                  >
+                </p>
+              } @else {
+                <div class="price">{{ price(current.priceCents, current.currency) }}</div>
+              }
               <p class="muted">
                 {{ current.lessonCount }} {{ current.lessonCount === 1 ? 'lesson' : 'lessons' }} ·
                 access does not expire
@@ -92,8 +125,40 @@ import { SessionStore } from '../../core/session.store';
                   [nzLoading]="buying()"
                   (click)="buy()"
                 >
-                  {{ current.priceCents === 0 ? 'Enroll for free' : 'Buy this course' }}
+                  {{
+                    current.priceCents === 0 || quote()?.discountedCents === 0
+                      ? 'Enroll for free'
+                      : 'Buy this course'
+                  }}
                 </button>
+                @if (current.priceCents > 0 && !quote()) {
+                  @if (couponOpen()) {
+                    <form class="coupon" (ngSubmit)="applyCoupon()">
+                      <input
+                        nz-input
+                        name="coupon"
+                        placeholder="Coupon code"
+                        aria-label="Coupon code"
+                        autocomplete="off"
+                        [(ngModel)]="couponCode"
+                      />
+                      <button nz-button type="submit" [nzLoading]="applying()">Apply</button>
+                    </form>
+                    @if (couponError(); as message) {
+                      <p class="coupon-error" role="alert">{{ message }}</p>
+                    }
+                  } @else {
+                    <p class="note">
+                      <a
+                        role="button"
+                        tabindex="0"
+                        (click)="couponOpen.set(true)"
+                        (keydown.enter)="couponOpen.set(true)"
+                        >Have a coupon code?</a
+                      >
+                    </p>
+                  }
+                }
               } @else {
                 <a
                   nz-button
@@ -170,6 +235,29 @@ import { SessionStore } from '../../core/session.store';
       font-size: 28px;
       font-weight: 600;
     }
+    .was {
+      margin-right: 6px;
+      font-size: 18px;
+      font-weight: 400;
+      color: rgba(0, 0, 0, 0.45);
+    }
+    .applied {
+      margin: 0 0 8px;
+      color: #389e0d;
+    }
+    .coupon {
+      display: flex;
+      gap: 8px;
+      margin-top: 12px;
+    }
+    .coupon input {
+      text-transform: uppercase;
+    }
+    .coupon-error {
+      margin: 6px 0 0;
+      font-size: 13px;
+      color: #cf1322;
+    }
     .note {
       margin: 12px 0 0;
       font-size: 13px;
@@ -191,6 +279,12 @@ export class CoursePage {
   protected readonly buying = signal(false);
   protected readonly error = signal<string | null>(null);
   protected readonly price = formatPrice;
+  protected readonly couponOpen = signal(false);
+  protected couponCode = '';
+  protected readonly applying = signal(false);
+  protected readonly couponError = signal<string | null>(null);
+  /** The price with the coupon the student applied; its code is sent with the purchase. */
+  protected readonly quote = signal<CheckoutQuote | null>(null);
 
   protected readonly owned = computed(() => {
     const course = this.course();
@@ -208,6 +302,8 @@ export class CoursePage {
     this.loading.set(true);
     this.error.set(null);
     this.course.set(null);
+    this.removeCoupon();
+    this.couponOpen.set(false);
     try {
       const course = await firstValueFrom(this.api.course(slug));
       if (slug === this.slug()) {
@@ -228,7 +324,7 @@ export class CoursePage {
     this.buying.set(true);
     this.error.set(null);
     try {
-      const result = await firstValueFrom(this.api.checkout(course.id));
+      const result = await firstValueFrom(this.api.checkout(course.id, this.quote()?.couponCode));
       if (result.enrolled) {
         // Free course (or development payments): already ours, no redirect needed.
         await this.session.refreshCourses();
@@ -248,5 +344,33 @@ export class CoursePage {
       }
       this.error.set(errorMessage(error, 'The purchase could not be started.'));
     }
+  }
+
+  protected async applyCoupon(): Promise<void> {
+    const course = this.course();
+    const code = this.couponCode.trim();
+    if (!course || !code || this.applying()) {
+      return;
+    }
+    // A code no coupon could have: no need to ask, and no validation jargon.
+    if (!couponCodeSchema.safeParse(code).success) {
+      this.couponError.set('That coupon code does not exist.');
+      return;
+    }
+    this.applying.set(true);
+    this.couponError.set(null);
+    try {
+      this.quote.set(await firstValueFrom(this.api.checkoutQuote(course.id, code)));
+    } catch (error) {
+      this.couponError.set(errorMessage(error, 'The coupon could not be checked.'));
+    } finally {
+      this.applying.set(false);
+    }
+  }
+
+  protected removeCoupon(): void {
+    this.quote.set(null);
+    this.couponCode = '';
+    this.couponError.set(null);
   }
 }

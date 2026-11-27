@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { idSchema } from './common.js';
+import { couponCodeSchema } from './coupon.js';
 
 export const courseStatusSchema = z.enum(['draft', 'published']);
 export type CourseStatus = z.infer<typeof courseStatusSchema>;
@@ -123,7 +124,11 @@ export const lessonResultSchema = z.object({
 });
 export type LessonResultInput = z.infer<typeof lessonResultSchema>;
 
-export const checkoutSchema = z.object({ courseId: idSchema });
+export const checkoutSchema = z.object({
+  courseId: idSchema,
+  /** A discount coupon; the API checks it again and prices the order itself. */
+  couponCode: couponCodeSchema.optional(),
+});
 export type CheckoutInput = z.infer<typeof checkoutSchema>;
 
 export interface CheckoutResult {
