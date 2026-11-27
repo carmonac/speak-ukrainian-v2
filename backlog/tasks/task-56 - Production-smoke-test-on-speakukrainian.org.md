@@ -1,11 +1,11 @@
 ---
 id: TASK-56
 title: Production smoke test on speakukrainian.org
-status: In Progress
+status: Done
 assignee:
   - '@claude'
 created_date: '2026-11-24T21:25:21Z'
-updated_date: '2026-11-25T09:30:09Z'
+updated_date: '2026-11-27T19:01:10Z'
 labels:
   - infra
 milestone: m-5
@@ -25,7 +25,7 @@ The migration replaces the database, authentication, storage, e-mail and hosting
 - [x] #1 https://speakukrainian.org renders the main page and www redirects to it
 - [x] #2 The admin signs in with the default password, changes it, and the old one stops working
 - [x] #3 A new student registers, receives a password-reset e-mail and signs in with the new password
-- [ ] #4 An H5P package is uploaded in the admin app and played in the student app
+- [x] #4 An H5P package is uploaded in the admin app and played in the student app
 - [x] #5 A chat message sent by the student appears for the admin and the reply appears for the student
 - [x] #6 The daily reminder endpoint, triggered once by hand, completes without error
 <!-- AC:END -->
@@ -53,4 +53,12 @@ Not done: H5P upload and play, and the admin reply in the chat. Both need an adm
 - The real control panel, in the owner's own signed-in browser session, showed that conversation with both messages and the lesson context, and no default-password banner.
 Cleanup: the three test accounts (two students, the temporary admin), the course and the exercise row were deleted from D1 and the six objects of the exercise and of its test library from R2. Afterwards: 1 user (the real administrator), 0 courses, lessons, exercises, orders, enrollments, messages and progress rows, 1 page, and an empty bucket. One email_log row remains (the password-reset record, no longer linked to a user).
 Not covered: a real H5P content type, uploaded through the admin app and played in the student app in a browser. The package used here was a synthetic one with a made-up library, driven through the API, because no real .h5p file was available; it proves storage, access control and streaming, not that the H5P player renders in the browser in production.
+
+2026-11-27: the owner reports that content authors are working in production, uploading real H5P packages in the admin app and installing H5P libraries (TASK-61), which covers the remaining criterion with real content types.
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Production smoke test of the Cloudflare stack on speakukrainian.org after the first deploy (2026-11-25): main page and www/http redirects, admin default-password change, student registration and password reset by e-mail, chat round trip, daily reminder Cron Trigger, and H5P upload, access control and streaming (first with a synthetic package via the API, all test data cleaned up). Real H5P content uploaded through the admin app is now in use in production, confirmed by the owner on 2026-11-27.
+<!-- SECTION:FINAL_SUMMARY:END -->

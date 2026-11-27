@@ -158,8 +158,9 @@ e-mails a reset link.
    - Signing secret → `STRIPE_WEBHOOK_SECRET`
 3. `wrangler secret put` both in `apps/gateway`.
 
-Until the key is set, paid courses cannot be bought (the checkout answers
-"Payments are not available yet"); free courses work. Prices are set per
+Production does not need the key to start. Until it is set the API boots
+normally and logs a warning, paid courses cannot be bought (the checkout
+answers 503 "Payments are not available yet") and free courses work. Prices are set per
 course in the control panel; no products need to exist in Stripe.
 
 ## Checks after a deploy

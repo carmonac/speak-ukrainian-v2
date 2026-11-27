@@ -5,7 +5,7 @@ status: Done
 assignee:
   - '@claude'
 created_date: '2026-11-27T15:24:33Z'
-updated_date: '2026-11-27T16:10:20Z'
+updated_date: '2026-11-27T20:29:43Z'
 labels:
   - admin
   - student
@@ -63,6 +63,8 @@ Tests:
 - Renderer: style injection (head, no head, once, untouched without boxes).
 - All checks pass: 796 API tests, lint, typecheck, format, build.
 Note for local dev: after rebuilding `shared`, the Angular dev servers need their `.angular/cache` cleared and a restart, and the API a restart, to pick up new exports.
+
+Follow-up: choosing a kind with part of a paragraph selected boxed the whole paragraph (wrapIn works on whole blocks). The editor now splits top-level text blocks at the selection edges first, trimming the spaces at the cut; a bare cursor still boxes its whole paragraph.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary

@@ -97,18 +97,23 @@ export const envSchema = z.object({
 
 export type Env = z.infer<typeof envSchema>;
 
-export function loadConfig(raw: NodeJS.ProcessEnv = process.env): Env {
+/**
+ * The single validation path, used by `ConfigModule.forRoot({ validate })`.
+ * The error lists every invalid variable with its path, so one failed boot
+ * shows everything that needs fixing.
+ *
+ * `STRIPE_SECRET_KEY` is deliberately not required in production: without it
+ * the API still boots and `PaymentsService` refuses paid checkouts (503) while
+ * free courses keep working. Requiring it here would take the whole site down
+ * until payments go live.
+ */
+export function validateEnv(raw: Record<string, unknown>): Env {
   const result = envSchema.safeParse(raw);
   if (!result.success) {
     const issues = result.error.issues
       .map((i) => `  ${i.path.join('.') || '(root)'}: ${i.message}`)
       .join('\n');
     throw new Error(`Invalid environment configuration:\n${issues}`);
-  }
-  if (result.data.NODE_ENV === 'production' && !result.data.STRIPE_SECRET_KEY) {
-    throw new Error(
-      'Invalid environment configuration:\n  STRIPE_SECRET_KEY: required in production',
-    );
   }
   return result.data;
 }

@@ -16,7 +16,8 @@ import { FormsModule } from '@angular/forms';
 import { Editor, Node, mergeAttributes, type Content } from '@tiptap/core';
 import Image from '@tiptap/extension-image';
 import { Placeholder } from '@tiptap/extensions';
-import { NodeSelection } from '@tiptap/pm/state';
+import type { ResolvedPos } from '@tiptap/pm/model';
+import { NodeSelection, TextSelection, type Transaction } from '@tiptap/pm/state';
 import StarterKit from '@tiptap/starter-kit';
 import { firstValueFrom } from 'rxjs';
 import { NzButtonModule } from 'ng-zorro-antd/button';
@@ -772,9 +773,12 @@ export class RichTextEditor implements OnDestroy {
       editor.chain().focus().updateAttributes('callout', { kind }).run();
       return;
     }
-    if (!editor.chain().focus().wrapIn('callout', { kind }).run()) {
+    // Checked first: a chain that fails part-way still applies its earlier steps.
+    if (!editor.can().chain().command(isolateSelection).wrapIn('callout', { kind }).run()) {
       this.message.info('Put the cursor in a paragraph, or select some text, first.');
+      return;
     }
+    editor.chain().focus().command(isolateSelection).wrapIn('callout', { kind }).run();
   }
 
   /**
@@ -879,4 +883,42 @@ function altFromName(name: string): string {
     .replace(/\.[^.]+$/, '')
     .replace(/[-_]+/g, ' ')
     .trim();
+}
+
+/**
+ * Makes the selected text its own paragraph(s) before it goes into a box.
+ * `wrapIn` works on whole blocks, so selecting a sentence in the middle of a
+ * paragraph would otherwise box the entire paragraph. The block is split at
+ * each edge of the selection that is not already at the block's own start or
+ * end (the end first, so the start keeps its position), and the spaces at the
+ * cut are dropped so no paragraph is left starting or ending with one. Only
+ * top-level text blocks are split; inside a list the whole item goes in the box.
+ */
+function isolateSelection({ tr }: { tr: Transaction }): boolean {
+  const { from, to, $from, $to, empty } = tr.selection;
+  if (empty || !(tr.selection instanceof TextSelection)) {
+    return true;
+  }
+  cutAt(tr, $to, to);
+  cutAt(tr, $from, tr.mapping.map(from, -1));
+  tr.setSelection(TextSelection.create(tr.doc, tr.mapping.map(from), tr.mapping.map(to, -1)));
+  return true;
+}
+
+/** Splits the top-level text block at `pos` (`$pos` resolved before any change), trimming the spaces around the cut. */
+function cutAt(tr: Transaction, $pos: ResolvedPos, pos: number): void {
+  const block = $pos.parent;
+  if ($pos.depth !== 1 || !block.isTextblock) {
+    return;
+  }
+  const offset = $pos.parentOffset;
+  const before = /\s*$/.exec(block.textBetween(0, offset, undefined, '\ufffc'))?.[0].length ?? 0;
+  const after =
+    /^\s*/.exec(block.textBetween(offset, block.content.size, undefined, '\ufffc'))?.[0].length ??
+    0;
+  if (offset - before <= 0 || offset + after >= block.content.size) {
+    return;
+  }
+  tr.delete(pos - before, pos + after);
+  tr.split(pos - before);
 }

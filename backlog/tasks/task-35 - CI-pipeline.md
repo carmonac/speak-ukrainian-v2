@@ -1,10 +1,10 @@
 ---
 id: TASK-35
 title: CI pipeline
-status: In Progress
+status: Done
 assignee: []
 created_date: '2026-11-24T15:06:44Z'
-updated_date: '2026-11-25T09:15:57Z'
+updated_date: '2026-11-27T19:01:03Z'
 labels:
   - infra
 milestone: m-4
@@ -21,8 +21,8 @@ GitHub Actions: lint, typecheck, test, build. Verification only: deployments are
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Workflow runs on push and pull request
-- [ ] #2 The workflow has no image-build or deploy job
+- [x] #1 Workflow runs on push and pull request
+- [x] #2 The workflow has no image-build or deploy job
 <!-- AC:END -->
 
 ## Implementation Notes
@@ -58,3 +58,9 @@ The workflow ran on the push to main of 2026-11-25 (run 45583279036) and passed 
 
 ---
 <!-- COMMENTS:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+GitHub Actions workflow .github/workflows/ci.yml with a single verify job (format check, lint, typecheck, test, build); no image-build or deploy job, since deploys are local (TASK-55) and hosting is on Cloudflare. Verified on every push to main since 2026-11-25 (all green, ~1.5 min). The pull_request trigger is configured but has not been observed yet because the repository has had no pull requests; closed by the owner's decision on 2026-11-27.
+<!-- SECTION:FINAL_SUMMARY:END -->

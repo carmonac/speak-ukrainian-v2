@@ -199,7 +199,8 @@ reminder arrives between 24 and 48 hours after the message.
 
 Stripe Checkout. Without `STRIPE_SECRET_KEY`, outside production a purchase
 completes instantly so the classroom can be exercised locally; in production
-a paid course cannot be bought and free courses still can.
+the API still boots, a paid course cannot be bought (503) and free courses
+still can. The key is deliberately not required by the environment validation.
 
 ### Public pages are served from memory
 

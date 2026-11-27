@@ -1,5 +1,6 @@
 import type { ConfigService } from '@nestjs/config';
 import type Stripe from 'stripe';
+import { ServiceUnavailableException } from '@nestjs/common';
 import { describe, expect, it } from 'vitest';
 import type { Env } from '../config/configuration.js';
 import { createTestDatabase } from '../infra/db/sqlite.test-driver.js';
@@ -37,6 +38,42 @@ describe('PaymentsService checkout', () => {
     expect(sessions[0]?.line_items?.[0]?.price_data?.product_data).toEqual({
       name: 'Ukrainian A1',
       description: 'Start Tom & Jerry 👋',
+    });
+  });
+
+  describe('in production without a Stripe key', () => {
+    const setup = () => {
+      const t = createTestDatabase();
+      t.addUser('u1');
+      t.all(
+        `insert into courses (id, title, slug, summary, price_cents, currency, status)
+         values ('paid', 'Paid', 'paid', '', 2500, 'eur', 'published'),
+                ('free', 'Free', 'free', '', 0, 'eur', 'published')`,
+      );
+      const config = {
+        get: (key: string) =>
+          ({ NODE_ENV: 'production', STUDENT_APP_URL: 'https://student.example.com' })[key],
+      } as unknown as ConfigService<Env, true>;
+      return { t, service: new PaymentsService(t.db, config) };
+    };
+    const student = { uid: 'u1', email: undefined, role: 'student' as const };
+
+    it('refuses a paid course with 503 and enrolls nobody', async () => {
+      const { t, service } = setup();
+      await expect(service.checkout(student, 'paid')).rejects.toBeInstanceOf(
+        ServiceUnavailableException,
+      );
+      expect(t.all('select * from enrollments')).toEqual([]);
+      expect(t.all('select * from orders')).toEqual([]);
+    });
+
+    it('still enrolls the student in a free course', async () => {
+      const { t, service } = setup();
+      await expect(service.checkout(student, 'free')).resolves.toEqual({
+        url: 'https://student.example.com/my-courses/free',
+        enrolled: true,
+      });
+      expect(t.all('select course_id from enrollments')).toEqual([{ course_id: 'free' }]);
     });
   });
 });
