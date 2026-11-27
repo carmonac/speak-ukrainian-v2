@@ -52,8 +52,6 @@ const MESSAGES: Record<string, string> = {
   'unable-to-unzip': UNREADABLE_ARCHIVE,
   'package-validation-failed': 'The package is not a valid H5P package.',
   'unable-to-parse-package': 'The package contains a JSON file that could not be parsed.',
-  'install-missing-libraries':
-    'The package needs libraries that are neither installed nor included in it.',
   'import-package-no-id-assigned': 'The package was read but no content could be created from it.',
   'storage-file-implementations:illegal-relative-filename': UNUSABLE_PATH,
   'storage-file-implementations:illegal-absolute-filename': UNUSABLE_PATH,
@@ -240,7 +238,9 @@ export function toHttpException(error: unknown): HttpException | null {
   // serves the import path and the read paths, and a reader who asked for a
   // missing exercise must not be told their upload failed.
   const message =
-    MESSAGES[error.errorId] ?? `The H5P request could not be completed (${error.errorId}).`;
+    error.errorId === 'install-missing-libraries'
+      ? missingLibrariesMessage(error)
+      : (MESSAGES[error.errorId] ?? `The H5P request could not be completed (${error.errorId}).`);
 
   // An aggregate knows *which* rules failed. Without forwarding them the admin
   // is told only that validation failed, which is not actionable.
@@ -305,6 +305,17 @@ function plainErrorException(error: unknown): HttpException | null {
   }
 
   return null;
+}
+
+/**
+ * Reached only after `withLibrariesFromHub` has already tried the H5P Hub, so
+ * the sentence says so and names what is still missing — the one fact an
+ * author can take to whoever made the package.
+ */
+function missingLibrariesMessage(error: H5pError): string {
+  const libraries = error.replacements.libraries;
+  const named = typeof libraries === 'string' && libraries.trim() !== '' ? ` (${libraries})` : '';
+  return `The package needs content types that are not included in it and could not be installed from the H5P Hub${named}. Export it again with its libraries included.`;
 }
 
 function badRequest(message: string): HttpException {

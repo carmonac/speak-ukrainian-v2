@@ -13,6 +13,7 @@ import { StorageService } from '../infra/storage/storage.service.js';
 import { H5pContentRepository } from './h5p-content.repository.js';
 import { H5pContentStorage } from './h5p-content.storage.js';
 import { CONTENT_MISSING_MESSAGE, toHttpException } from './h5p.errors.js';
+import { withLibrariesFromHub } from './h5p.hub.js';
 import { assertSafePackageEntries } from './h5p.package-scan.js';
 import { contentPrefix, contentStoragePath } from './h5p.paths.js';
 import { H5P_EDITOR } from './h5p.tokens.js';
@@ -48,9 +49,10 @@ export class H5pService {
       // so the names have to be refused while they are still only names.
       await assertSafePackageEntries(file.path);
 
-      const { id, metadata } = await this.editor.packageImporter.addPackageLibrariesAndContent(
-        file.path,
-        user,
+      // A package without its libraries (common from Moodle and h5p.com) has
+      // them installed from the H5P Hub and is imported again.
+      const { id, metadata } = await withLibrariesFromHub(this.editor, user, () =>
+        this.editor.packageImporter.addPackageLibrariesAndContent(file.path, user),
       );
       const contentId = String(id);
       const mainLibrary = mainLibraryUberName(metadata);

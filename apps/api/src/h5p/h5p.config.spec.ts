@@ -38,11 +38,9 @@ describe('createH5pConfig', () => {
     expect(createH5pConfig(BASE_URL).setFinishedEnabled).toBe(false);
   });
 
-  it('switches off every feature that would use the H5P hub', () => {
-    // Necessary and *not* sufficient: `fetchingDisabled` is only a field in the
-    // registration payload, so `content-type-cache` still POSTs to
-    // `hubRegistrationEndpoint` unless the key-value cache is seeded. That
-    // seeding is `h5p.module.ts`'s, and the e2e is where it is pinned.
+  it('switches off the Content Hub and usage statistics', () => {
+    // The *content-type* Hub stays in use (missing libraries are installed
+    // from it); these are the other things `api.h5p.org` offers.
     const config = createH5pConfig(BASE_URL);
 
     expect(config.contentHubEnabled).toBe(false);

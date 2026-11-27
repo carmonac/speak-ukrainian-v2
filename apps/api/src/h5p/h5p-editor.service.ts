@@ -24,6 +24,7 @@ import {
 import { H5pContentRepository } from './h5p-content.repository.js';
 import { H5pUrlTokenService } from './h5p-url-token.service.js';
 import { CONTENT_MISSING_MESSAGE, mapH5pErrors } from './h5p.errors.js';
+import { withLibrariesFromHub } from './h5p.hub.js';
 import { assertSafeContentId, assertSafeRequestPath } from './h5p.paths.js';
 import type { RangeCallback } from './h5p.responses.js';
 import { H5pService, mainLibraryUberName } from './h5p.service.js';
@@ -61,10 +62,10 @@ const GET_AJAX_ACTIONS = new Set(['content-type-cache', 'libraries']);
 /**
  * `POST /ajax` actions this API serves, as an allowlist rather than a denylist.
  *
- * Three of `postAjax`'s eight are deliberately unreachable:
- * `library-install` and `get-content` both talk to the H5P Hub, which
- * `contentHubEnabled: false` switches off, and `content-hub-metadata-cache`
- * does the same from the GET side. An unknown action reaches the endpoint's own
+ * Two of `postAjax`'s eight are deliberately unreachable: `get-content` and,
+ * from the GET side, `content-hub-metadata-cache` belong to the H5P *Content*
+ * Hub, which `contentHubEnabled: false` switches off. `library-install` is the
+ * content-type Hub and is served: it is the selector's Install button. An unknown action reaches the endpoint's own
  * `default` branch, which raises `malformed-request` with a **500** — a server
  * error for a query string the caller chose.
  *
@@ -79,6 +80,7 @@ const POST_AJAX_ACTIONS = new Set([
   'files',
   'filter',
   'library-upload',
+  'library-install',
 ]);
 
 /** A file part multer wrote to disk, in the shape the endpoint asks for. */
@@ -108,6 +110,8 @@ export interface PostAjaxRequest {
   upload?: AjaxUpload;
   /** The `h5p` part — `action=library-upload`. */
   packageUpload?: AjaxUpload;
+  /** `?id`, the machine name to fetch from the H5P Hub — `action=library-install`. */
+  id?: string;
 }
 
 /**
@@ -258,18 +262,27 @@ export class H5pEditorService {
         throw missingPart('file');
       }
 
-      return this.ajax.postAjax(
-        request.action,
-        // `'libraries' in body` on three of the five branches, so a request with
-        // no body at all raises `TypeError: Cannot use 'in' operator`.
-        (request.body ?? {}) as PostAjaxBody,
-        request.language ?? DEFAULT_LANGUAGE,
-        user,
-        request.upload,
-        undefined,
-        undefined,
-        request.packageUpload,
-      );
+      // A local, because the narrowing `assertAllowedAction` gave
+      // `request.action` does not reach into a closure.
+      const action = request.action;
+      const call = () =>
+        this.ajax.postAjax(
+          action,
+          // `'libraries' in body` on three of the five branches, so a request with
+          // no body at all raises `TypeError: Cannot use 'in' operator`.
+          (request.body ?? {}) as PostAjaxBody,
+          request.language ?? DEFAULT_LANGUAGE,
+          user,
+          request.upload,
+          // Only `library-install` reads it, and refuses an empty one itself.
+          request.id ?? '',
+          undefined,
+          request.packageUpload,
+        );
+
+      // The editor's Upload tab: a package without its libraries has them
+      // installed from the H5P Hub and is read again, as the course upload does.
+      return action === 'library-upload' ? withLibrariesFromHub(this.editor, user, call) : call();
     });
 
     // After the answer is computed, never before it, and never awaited. This is

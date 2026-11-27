@@ -180,6 +180,8 @@ export class H5pEditorController {
     @Query('language') language?: string,
     @UploadedFiles() files?: Record<string, Express.Multer.File[]>,
     @CurrentUser() caller?: AuthenticatedUser,
+    // Last so the positional order above stays the one the specs call.
+    @Query('id') id?: string,
   ): Promise<unknown> {
     const user = callerOf(caller);
     const upload = uploadOf(files, 'file');
@@ -187,7 +189,7 @@ export class H5pEditorController {
 
     try {
       return await this.editor.postAjax(
-        { action, body, language: editorLanguage(language), upload, packageUpload },
+        { action, body, language: editorLanguage(language), upload, packageUpload, id },
         user,
       );
     } finally {

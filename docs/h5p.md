@@ -43,10 +43,21 @@ In the course editor each lesson offers:
   editor can only be initialised once per document.
 - **Preview** — plays the exercise as a student will see it.
 
-**Content types.** The H5P Hub is switched off (`contentHubEnabled: false`), so
-the editor lists only content types that are already installed. A new type
-becomes available after uploading any `.h5p` that uses it, or through the
-editor's own _Upload_ tab.
+**Content types.** The editor's content-type selector lists the content types
+of the [H5P Hub](https://h5p.org/content-types-and-applications) (`api.h5p.org`)
+and installs one with its _Get → Install_ button, as Moodle does. Packages
+exported without their libraries — common from Moodle and h5p.com, where the
+platform fetches them itself — are accepted too: when an import (the course
+upload or the editor's _Upload_ tab) finds libraries that are neither installed
+nor in the package, the API installs the missing content types from the Hub and
+imports the package again (`h5p.hub.ts`). Only if the Hub cannot provide them
+is the upload refused, naming the libraries still missing.
+
+The Hub's list is fetched once per container boot, after the site registers
+with `api.h5p.org`, and kept in memory. If the Hub is unreachable the selector
+lists only the installed content types and a package without libraries is
+refused. The H5P _Content_ Hub (sharing whole exercises) and usage statistics
+stay switched off.
 
 ## Routes (`/api/h5p/…`)
 
@@ -54,7 +65,7 @@ editor's own _Upload_ tab.
 | ------------------------------------------------------------------------------- | ------------------------------------------------------ |
 | `POST content` (upload), `GET content`, `GET content/:id`, `DELETE content/:id` | admin                                                  |
 | `GET editor[/:id]`, `GET params/:id`, `POST editor[/:id]`                       | admin                                                  |
-| `GET/POST ajax`, `GET temp/:token/*`                                            | admin, identified by a URL token                       |
+| `GET/POST ajax` (incl. `library-install`), `GET temp/:token/*`                  | admin, identified by a URL token                       |
 | `GET play/:id`                                                                  | admin, or a student enrolled in a course containing it |
 | `GET play-files/:token/:id/*`                                                   | anyone holding a valid play token                      |
 | `GET libraries/*`, `core/*`, `editor-assets/*`                                  | public (generic H5P code, cached)                      |

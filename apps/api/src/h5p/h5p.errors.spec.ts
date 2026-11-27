@@ -19,6 +19,17 @@ describe('toHttpException', () => {
     );
   });
 
+  it('names the libraries a package still lacks after the Hub was tried', () => {
+    const exception = toHttpException(
+      new H5pError('install-missing-libraries', { libraries: 'H5P.InfoWall-0.4' }, 400),
+    );
+
+    expect(exception?.getStatus()).toBe(400);
+    expect(bodyOf(exception!)['message']).toBe(
+      'The package needs content types that are not included in it and could not be installed from the H5P Hub (H5P.InfoWall-0.4). Export it again with its libraries included.',
+    );
+  });
+
   it('lists every rule an aggregate validation failure collected', () => {
     // Without this the admin is told only "validation failed" and has nothing
     // to act on.

@@ -28,6 +28,7 @@ import { H5pTemporaryStorage } from './h5p-temporary.storage.js';
 import { H5pClientAssets } from './h5p.client-assets.js';
 import { createH5pConfig } from './h5p.config.js';
 import { H5pController } from './h5p.controller.js';
+import { H5P_HUB_LOCAL_ID } from './h5p.hub.js';
 import { H5pService } from './h5p.service.js';
 import {
   H5P_AJAX_ENDPOINT,
@@ -128,29 +129,16 @@ import { H5pWorkingDirsModule } from './h5p.working-dirs.module.js';
         // not a named export of the package root.
         const keyValueStorage = new fsImplementations.InMemoryStorage();
 
-        // **Seeded, and this is what keeps the server off `api.h5p.org`.**
-        // `ContentTypeCache.get()` short-circuits on a truthy stored value, and
-        // an empty array is truthy; left unseeded it falls through to
-        // `forceUpdate()` → `registerOrGetUuid()`, which POSTs to
-        // `config.hubRegistrationEndpoint` on **every** `GET /ajax?action=content-type-cache`.
-        // `fetchingDisabled: 1` does not prevent that — it is only a field in
-        // the registration payload — and the failure is caught, so nothing is
-        // cached and the request is retried forever.
-        //
-        // The empty cache is not a placeholder: with `contentHubEnabled: false`
-        // there are no hub content types, so `[]` is the truth.
-        // `addLocalLibraries` still lists every installed library, which is
-        // what the editor's content-type selector actually needs.
-        //
-        // The timestamp only makes `isOutdated()` false for
-        // `contentTypeCacheRefreshInterval` — one day — after boot, so an
-        // instance alive past that answers `outdated: true` to a client whose
-        // only response to it, installing from the hub, the action allowlist
-        // refuses with a 400. Nothing this API exposes calls
-        // `updateIfNecessary`, so no outbound request follows from it; it is a
-        // misleading flag on a long-lived instance and not a leak.
-        await keyValueStorage.save('contentTypeCache', []);
-        await keyValueStorage.save('contentTypeCacheUpdate', Date.now());
+        // **Not seeded: the content-type cache is filled from the H5P Hub.**
+        // `ContentTypeCache.get()` downloads the Hub's list (after registering
+        // the site at `config.hubRegistrationEndpoint`) the first time it finds
+        // the store empty, so the editor's selector lists every Hub content
+        // type and `library-install` can fetch one, and a package that lacks
+        // its libraries can have them installed (`withLibrariesFromHub`). The
+        // store is per instance and in memory, so each container boot fetches
+        // the list once. If the Hub is unreachable `get()` answers `[]`,
+        // caches nothing and tries again on the next request; the selector
+        // then lists only the installed content types, as it did before.
 
         // No `IPermissionSystem` is passed, so the default
         // `LaissezFairePermissionSystem` allows everything. That is correct
@@ -191,6 +179,7 @@ import { H5pWorkingDirsModule } from './h5p.working-dirs.module.js';
           temporaryStorage,
           translate,
           createH5pUrlGenerator(config, (uid) => tokens.mint(uid)),
+          { getLocalIdOverride: () => H5P_HUB_LOCAL_ID },
         ).setRenderer((model: IEditorModel) => model);
       },
     },
