@@ -53,6 +53,10 @@ export class ExercisePreview {
 
       this.loading.set(true);
       this.error.set(null);
+      // A position left by an earlier preview (or kept in the URL across a
+      // reload) would make an Interactive Book resume there instead of at its
+      // cover.
+      clearBookHash();
 
       // The model is fetched before mounting and merely handed over, which
       // keeps load failures out of the widget's own unstyled error text.
@@ -76,7 +80,27 @@ export class ExercisePreview {
       onCleanup(() => {
         cancelled = true;
         teardown?.();
+        clearBookHash();
       });
     });
   }
+}
+
+/**
+ * Removes the position an H5P Interactive Book keeps in the address bar.
+ *
+ * The book writes `#h5pbookid=…&chapter=…&section=…` into **`top.location.hash`**
+ * — the admin's own URL, since the player's iframe is same-origin — and reads it
+ * back on start-up to resume at that chapter. Left behind, it makes the next
+ * preview (and the course editor after a reload) open mid-book. `replaceState`
+ * and not an assignment to `location.hash`: it fires neither `hashchange`, which
+ * the books of earlier previews still listen to on `top`, nor `popstate`, which
+ * the router would treat as a navigation.
+ */
+function clearBookHash(): void {
+  if (!window.location.hash.includes('h5pbookid=')) {
+    return;
+  }
+  const { pathname, search } = window.location;
+  window.history.replaceState(window.history.state, '', pathname + search);
 }

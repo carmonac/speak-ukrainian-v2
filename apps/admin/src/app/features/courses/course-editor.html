@@ -281,11 +281,17 @@
   </form>
 </nz-spin>
 
+<!--
+  nzCloseOnNavigation off: an Interactive Book writes its chapter into this
+  page's URL hash, which fires `popstate`; the modal would then dispose itself
+  while `previewing()` stays set, and the next Preview click would do nothing.
+-->
 <nz-modal
   [nzVisible]="previewing() !== null"
   [nzTitle]="previewing()?.title ?? 'Preview'"
   nzWidth="900px"
   [nzFooter]="null"
+  [nzCloseOnNavigation]="false"
   (nzOnCancel)="previewing.set(null)"
 >
   <ng-container *nzModalContent>
